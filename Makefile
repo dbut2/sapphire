@@ -4,8 +4,8 @@ clean:
 
 .PHONY: build
 build: clean
-	GOOS=darwin GOARCH=amd64 go build -o build/sapphire-amd64
-	GOOS=darwin GOARCH=arm64 go build -o build/sapphire-arm64
+	CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -o build/sapphire-amd64
+	CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -o build/sapphire-arm64
 	lipo -create -output build/sapphire build/sapphire-amd64 build/sapphire-arm64
 	mkdir -p Sapphire.app/Contents/MacOS/
 	cp build/sapphire Sapphire.app/Contents/MacOS/sapphire
