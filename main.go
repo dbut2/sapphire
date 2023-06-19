@@ -1,9 +1,7 @@
 package main
 
 import (
-	"fmt"
 	"image"
-	"image/color"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -40,7 +38,9 @@ func main() {
 	img := image.NewRGBA(image.Rect(0, 0, 240, 160))
 	cimg := canvas.NewImageFromImage(img)
 
-	vramSize := 240 * 160 * 2 * b
+	cimg.ScaleMode = canvas.ImageScalePixels
+
+	vramSize := 240 * 160 * 2
 	vram := NewMemory(vramSize * 2)
 
 	video := Video{
@@ -55,22 +55,17 @@ func main() {
 		}
 	}
 
-	start := time.Now()
-	c := 0
-
 	fps := 30
 
 	go func() {
 		timer := time.NewTicker(time.Second / time.Duration(fps))
 
-		start = time.Now()
 		for true {
 			_ = <-timer.C
 			if video.Drawing {
 				continue
 			}
 			video.Drawing = true
-			c++
 
 			video.Draw(img)
 			cimg.Refresh()
@@ -89,29 +84,12 @@ func main() {
 		}
 	}()
 
-	go func() {
-		time.Sleep(time.Second)
-		for true {
-			timer := time.NewTicker(time.Second / 10)
-			_ = <-timer.C
-			fmt.Printf("\r%v", time.Since(start)/time.Duration(c))
-		}
-	}()
-
 	w.SetContent(cimg)
 
 	w.SetFixedSize(true)
 	w.Resize(fyne.NewSize(240, 160))
 	w.ShowAndRun()
 }
-
-const (
-	b = 1 << (iota * 10)
-	kb
-	mb
-	gb
-	tb
-)
 
 type Video struct {
 	Drawing bool
@@ -121,16 +99,14 @@ type Video struct {
 
 func (v *Video) Draw(img *image.RGBA) {
 	v.Memory, v.Buffer = v.Buffer, v.Memory
-	crgba := color.RGBA{}
 	for i := 0; i < 240; i++ {
 		for j := 0; j < 160; j++ {
 			index := (i + j*240) * 2
 			r, g, b, a := rgba(v.Memory[index : index+2])
-			crgba.R = five2eight(r)
-			crgba.G = five2eight(g)
-			crgba.B = five2eight(b)
-			crgba.A = uint8(a) * 255
-			img.SetRGBA(i, j, crgba)
+			img.Pix[index*2+0] = five2eight[r]
+			img.Pix[index*2+1] = five2eight[g]
+			img.Pix[index*2+2] = five2eight[b]
+			img.Pix[index*2+3] = uint8(a) * 255
 		}
 	}
 }
@@ -147,24 +123,7 @@ func (m Memory) Set(at int, b []byte) {
 	}
 }
 
-func (m Memory) Draw() image.Image {
-	img := image.NewRGBA(image.Rect(0, 0, 240, 160))
-	for i := 0; i < 240; i++ {
-		for j := 0; j < 160; j++ {
-			index := (i + j*240) * 2
-			r, g, b, a := rgba(m[index : index+2])
-			img.SetRGBA(i, j, color.RGBA{
-				R: five2eight(r),
-				G: five2eight(g),
-				B: five2eight(b),
-				A: uint8(a) * 255,
-			})
-		}
-	}
-	return img
-}
-
-var five2eightmap = map[uint32]uint8{
+var five2eight = map[uint32]uint8{
 	0:  0,
 	1:  8,
 	2:  16,
@@ -197,8 +156,4 @@ var five2eightmap = map[uint32]uint8{
 	29: 239,
 	30: 247,
 	31: 255,
-}
-
-func five2eight(f uint32) uint8 {
-	return five2eightmap[f]
 }
