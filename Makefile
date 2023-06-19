@@ -4,11 +4,13 @@ clean:
 
 .PHONY: build
 build: clean
-	mkdir build/Sapphire.app
-	./icon.sh
-
-	go build -o build/Sapphire.app/Contents/MacOS/sapphire
+	GOOS=darwin GOARCH=amd64 go build -o build/sapphire-amd64
+	GOOS=darwin GOARCH=arm64 go build -o build/sapphire-arm64
+	lipo -create -output build/sapphire build/sapphire-amd64 build/sapphire-arm64
+	mkdir -p Sapphire.app/Contents/MacOS/
+	cp build/sapphire Sapphire.app/Contents/MacOS/sapphire
 
 .PHONY: package
 package: build
-	hdiutil create -volname Sapphire -srcfolder Sapphire.app -ov -format UDZO Sapphire.dmg
+	zip -r build/sapphire.zip Sapphire.app
+	hdiutil create -volname Sapphire -srcfolder Sapphire.app -ov -format UDZO build/sapphire.dmg

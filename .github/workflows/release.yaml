@@ -1,0 +1,28 @@
+name: Release
+
+on:
+  release:
+    types: [created]
+
+jobs:
+  release:
+    permissions: write-all
+    name: Release
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v3
+      - run: |
+          make package
+      - uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: build/sapphire.dmg
+          asset_name: sapphire.dmg
+          tag: ${{ github.ref }}
+      - uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: build/sapphire.zip
+          asset_name: sapphire.zip
+          tag: ${{ github.ref }}

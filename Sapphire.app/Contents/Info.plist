@@ -3,11 +3,10 @@
 <plist version="1.0">
 <dict>
   <key>CFBundleExecutable</key>
-  <string>Sapphire</string>
+  <string>sapphire</string>
   <key>CFBundleIdentifier</key>
   <string>dev.dylanbutler.sapphire</string>
   <key>CFBundleIconFile</key>
   <string>sapphire</string>
 </dict>
 </plist>
-
