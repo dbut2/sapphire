@@ -28,8 +28,46 @@ func main() {
 	var gamepak []byte
 	emu := gba.NewEmu(gamepak)
 
+	setup := testSetup3
+	draw := testDraw3
+
+	w.SetMainMenu(&fyne.MainMenu{
+		Items: []*fyne.Menu{
+			{
+				Label: "Debug",
+				Items: []*fyne.MenuItem{
+					{
+						ChildMenu: &fyne.Menu{
+							Items: []*fyne.MenuItem{
+								{
+									Label: "BGMODE3",
+									Action: func() {
+										setup, draw = testSetup3, testDraw3
+										img = image.NewRGBA(image.Rect(0, 0, 240, 160))
+										cimg.Image = img
+										setup(emu)
+									},
+								},
+								{
+									Label: "BGMODE5",
+									Action: func() {
+										setup, draw = testSetup5, testDraw5
+										img = image.NewRGBA(image.Rect(0, 0, 240, 160))
+										cimg.Image = img
+										setup(emu)
+									},
+								},
+							},
+						},
+						Label: "Video tests",
+					},
+				},
+			},
+		},
+	})
+
 	go func() {
-		testSetup3(emu)
+		setup(emu)
 		drawing := false
 
 		ticker := time.NewTicker(time.Second / time.Duration(fps))
@@ -44,7 +82,7 @@ func main() {
 			cimg.Refresh()
 
 			go func() {
-				testDraw3(emu)
+				draw(emu)
 				drawing = false
 			}()
 		}
@@ -77,9 +115,10 @@ func testSetup5(emu gba.Emulator) {
 	for i := 0; i < 160; i++ {
 		for j := 0; j < 128; j++ {
 			index := uint32(i + j*160)
-			c := emu.LCD.Color(uint32(32*i/160), 0, uint32(32*j/128), 1)
-			emu.Memory.Set16(0x06000000+index*2, c)
-			emu.Memory.Set16(0x0600A000+index*2, c)
+			c1 := emu.LCD.Color(uint32(32*i/160), 16, uint32(32*j/128), 1)
+			c2 := emu.LCD.Color(uint32(32*i/160), 0, uint32(32*j/128), 1)
+			emu.Memory.Set16(0x06000000+index*2, c1)
+			emu.Memory.Set16(0x0600A000+index*2, c2)
 		}
 	}
 }
