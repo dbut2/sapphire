@@ -61,13 +61,13 @@ func SetMemoryBlock(m Memory, mb MemoryBlock, value []byte) {
 	m.SetSlice(mb[0], value)
 }
 
-type IORegister[S IOSize] uint32
+type IORegister[S RegisterSize] uint32
 
-type IOSize interface {
+type RegisterSize interface {
 	uint8 | uint16 | uint32
 }
 
-func ReadIORegister[S IOSize](m Memory, r IORegister[S]) S {
+func ReadIORegister[S RegisterSize](m Memory, r IORegister[S]) S {
 	switch v := any(*new(S)).(type) {
 	case uint8:
 		return S(m.Access8(uint32(r)))
@@ -80,7 +80,7 @@ func ReadIORegister[S IOSize](m Memory, r IORegister[S]) S {
 	}
 }
 
-func SetIORegister[S IOSize](m Memory, r IORegister[S], value S) {
+func SetIORegister[S RegisterSize](m Memory, r IORegister[S], value S) {
 	switch v := any(*new(S)).(type) {
 	case uint8:
 		m.Set8(uint32(r), uint8(value))
@@ -91,4 +91,31 @@ func SetIORegister[S IOSize](m Memory, r IORegister[S], value S) {
 	default:
 		panic(v)
 	}
+}
+
+type IOFlag[S RegisterSize] struct {
+	Register IORegister[S]
+	Bit      uint8
+	Size     uint8
+}
+
+func Flag[S RegisterSize](r IORegister[S], bit uint8, size uint8) IOFlag[S] {
+	return IOFlag[S]{
+		Register: r,
+		Bit:      bit,
+		Size:     size,
+	}
+}
+
+func ReadFlag[S RegisterSize](m Memory, flag IOFlag[S]) S {
+	v := ReadIORegister(m, flag.Register)
+	return v >> flag.Bit & (1<<flag.Size - 1)
+}
+
+func SetFlag[S RegisterSize](m Memory, flag IOFlag[S], value S) {
+	v := ReadIORegister(m, flag.Register)
+	var mask S = (1<<flag.Size - 1) << flag.Bit
+	v &= ^mask
+	v |= value << flag.Bit
+	SetIORegister(m, flag.Register, v)
 }
