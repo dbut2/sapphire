@@ -24,6 +24,7 @@ func main() {
 	w.Resize(fyne.NewSize(240, 160))
 
 	fps := 30
+	ticker := time.NewTicker(time.Second / time.Duration(fps))
 
 	var gamepak []byte
 	emu := gba.NewEmu(gamepak)
@@ -61,6 +62,37 @@ func main() {
 						},
 						Label: "Video tests",
 					},
+					{
+						ChildMenu: &fyne.Menu{
+							Items: []*fyne.MenuItem{
+								{
+									Label: "1",
+									Action: func() {
+										ticker = time.NewTicker(time.Second / 1)
+									},
+								},
+								{
+									Label: "30",
+									Action: func() {
+										ticker = time.NewTicker(time.Second / 30)
+									},
+								},
+								{
+									Label: "120",
+									Action: func() {
+										ticker = time.NewTicker(time.Second / 120)
+									},
+								},
+								{
+									Label: "1000",
+									Action: func() {
+										ticker = time.NewTicker(time.Second / 1000)
+									},
+								},
+							},
+						},
+						Label: "FPS",
+					},
 				},
 			},
 		},
@@ -70,7 +102,6 @@ func main() {
 		setup(emu)
 		drawing := false
 
-		ticker := time.NewTicker(time.Second / time.Duration(fps))
 		for {
 			<-ticker.C
 			if drawing {
@@ -92,11 +123,14 @@ func main() {
 }
 
 func testSetup3(emu gba.Emulator) {
-	gba.SetFlag(emu.Memory, gba.BGMODE, 3)
+	gba.SetRegisterFlag(emu.Memory, gba.BGMODE, 3)
 	for i := 0; i < 240; i++ {
 		for j := 0; j < 160; j++ {
 			index := uint32(i + j*240)
 			c := emu.LCD.Color(uint32(32*i/240), 0, uint32(32*j/160), 1)
+			if (i+j)%2 == 0 {
+				c = 0
+			}
 			emu.Memory.Set16(gba.VRAM[0]+index*2, c)
 		}
 	}
@@ -104,14 +138,14 @@ func testSetup3(emu gba.Emulator) {
 
 func testDraw3(emu gba.Emulator) {
 	for i := uint32(0); i < 65536; i++ {
-		r, g, b, a := emu.LCD.RGBA2(emu.Memory.Access16(gba.VRAM[0] + i*2))
+		r, g, b, a := emu.LCD.RGBA(emu.Memory.Access16(gba.VRAM[0] + i*2))
 		c := emu.LCD.Color(r, g+1, b, a)
 		emu.Memory.Set16(gba.VRAM[0]+i*2, c)
 	}
 }
 
 func testSetup5(emu gba.Emulator) {
-	gba.SetFlag(emu.Memory, gba.BGMODE, 5)
+	gba.SetRegisterFlag(emu.Memory, gba.BGMODE, 5)
 	for i := 0; i < 160; i++ {
 		for j := 0; j < 128; j++ {
 			index := uint32(i + j*160)
@@ -125,9 +159,9 @@ func testSetup5(emu gba.Emulator) {
 
 func testDraw5(emu gba.Emulator) {
 	for i := uint32(0); i < 65536; i++ {
-		r, g, b, a := emu.LCD.RGBA2(emu.Memory.Access16(gba.VRAM[0] + i*2))
+		r, g, b, a := emu.LCD.RGBA(emu.Memory.Access16(gba.VRAM[0] + i*2))
 		c := emu.LCD.Color(r, g+1, b, a)
 		emu.Memory.Set16(gba.VRAM[0]+i*2, c)
 	}
-	gba.SetFlag(emu.Memory, gba.BGFRAME, ^gba.ReadFlag(emu.Memory, gba.BGFRAME))
+	gba.SetRegisterFlag(emu.Memory, gba.BGFRAME, ^gba.ReadRegisterFlag(emu.Memory, gba.BGFRAME))
 }

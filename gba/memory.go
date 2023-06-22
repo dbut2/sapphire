@@ -61,13 +61,13 @@ func SetMemoryBlock(m Memory, mb MemoryBlock, value []byte) {
 	m.SetSlice(mb[0], value)
 }
 
-type IORegister[S RegisterSize] uint32
+type IORegister[S Size] uint32
 
-type RegisterSize interface {
+type Size interface {
 	uint8 | uint16 | uint32
 }
 
-func ReadIORegister[S RegisterSize](m Memory, r IORegister[S]) S {
+func ReadIORegister[S Size](m Memory, r IORegister[S]) S {
 	switch v := any(*new(S)).(type) {
 	case uint8:
 		return S(m.Access8(uint32(r)))
@@ -80,7 +80,7 @@ func ReadIORegister[S RegisterSize](m Memory, r IORegister[S]) S {
 	}
 }
 
-func SetIORegister[S RegisterSize](m Memory, r IORegister[S], value S) {
+func SetIORegister[S Size](m Memory, r IORegister[S], value S) {
 	switch v := any(*new(S)).(type) {
 	case uint8:
 		m.Set8(uint32(r), uint8(value))
@@ -93,13 +93,13 @@ func SetIORegister[S RegisterSize](m Memory, r IORegister[S], value S) {
 	}
 }
 
-type IOFlag[S RegisterSize] struct {
+type IOFlag[S Size] struct {
 	Register IORegister[S]
 	Bit      uint8
 	Size     uint8
 }
 
-func Flag[S RegisterSize](r IORegister[S], bit uint8, size uint8) IOFlag[S] {
+func Flag[S Size](r IORegister[S], bit uint8, size uint8) IOFlag[S] {
 	return IOFlag[S]{
 		Register: r,
 		Bit:      bit,
@@ -107,15 +107,21 @@ func Flag[S RegisterSize](r IORegister[S], bit uint8, size uint8) IOFlag[S] {
 	}
 }
 
-func ReadFlag[S RegisterSize](m Memory, flag IOFlag[S]) S {
-	v := ReadIORegister(m, flag.Register)
-	return v >> flag.Bit & (1<<flag.Size - 1)
+func ReadRegisterFlag[S Size](m Memory, flag IOFlag[S]) S {
+	return ReadFlag(ReadIORegister(m, flag.Register), flag.Bit, flag.Size)
 }
 
-func SetFlag[S RegisterSize](m Memory, flag IOFlag[S], value S) {
-	v := ReadIORegister(m, flag.Register)
-	var mask S = (1<<flag.Size - 1) << flag.Bit
+func SetRegisterFlag[S Size](m Memory, flag IOFlag[S], value S) {
+	SetIORegister(m, flag.Register, SetFlag(ReadIORegister(m, flag.Register), flag.Bit, flag.Size, value))
+}
+
+func ReadFlag[S Size](v S, bit uint8, size uint8) S {
+	return v >> bit & (1<<size - 1)
+}
+
+func SetFlag[S Size](v S, bit uint8, size uint8, value S) S {
+	mask := S(1<<size-1) << bit
 	v &= ^mask
-	v |= value << flag.Bit
-	SetIORegister(m, flag.Register, v)
+	v |= value << bit
+	return v
 }
