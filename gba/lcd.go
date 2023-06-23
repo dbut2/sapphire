@@ -5,7 +5,11 @@ import (
 )
 
 type LCD struct {
-	Memory Memory
+	*Motherboard
+}
+
+func NewLCD(m *Motherboard) *LCD {
+	return &LCD{Motherboard: m}
 }
 
 func (l LCD) WriteTo(img *image.RGBA) {
@@ -16,19 +20,19 @@ func (l LCD) WriteTo(img *image.RGBA) {
 		3: l.BGMode3WriteTo,
 		4: l.BGMode4WriteTo,
 		5: l.BGMode5WriteTo,
-	}[ReadRegisterFlag(l.Memory, BGMODE)](img)
+	}[ReadFlag(l.Memory, BGMODE)](img)
 }
 
 func (l LCD) BGMode0WriteTo(img *image.RGBA) {
-	panic("unimplemented") // TODO
+	panic("unimplemented") // todo
 }
 
 func (l LCD) BGMode1WriteTo(img *image.RGBA) {
-	panic("unimplemented") // TODO
+	panic("unimplemented") // todo
 }
 
 func (l LCD) BGMode2WriteTo(img *image.RGBA) {
-	panic("unimplemented") // TODO
+	panic("unimplemented") // todo
 }
 
 func (l LCD) BGMode3WriteTo(img *image.RGBA) {
@@ -46,7 +50,7 @@ func (l LCD) BGMode4WriteTo(img *image.RGBA) {
 	frame := map[uint16]MemoryBlock{
 		0: {0x06000000, 0x06009FFF},
 		1: {0x0600A000, 0x06013FFF},
-	}[ReadRegisterFlag(l.Memory, BGFRAME)]
+	}[ReadFlag(l.Memory, BGFRAME)]
 	bytes := ReadMemoryBlock(l.Memory, frame)
 	for i := 0; i < 240*160; i++ {
 		r, g, b, a := l.PaletteRGBA(bytes[i])
@@ -61,7 +65,7 @@ func (l LCD) BGMode5WriteTo(img *image.RGBA) {
 	frame := map[uint16]MemoryBlock{
 		0: {0x06000000, 0x06009FFF},
 		1: {0x0600A000, 0x06013FFF},
-	}[ReadRegisterFlag(l.Memory, BGFRAME)]
+	}[ReadFlag(l.Memory, BGFRAME)]
 	for i := 0; i < 160*128; i++ {
 		index := i + (i/160)*80 + 240*16 + 40
 		r, g, b, a := l.RGBA(l.Memory.Access16(frame[0] + uint32(i)*2))

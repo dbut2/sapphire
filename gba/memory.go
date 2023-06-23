@@ -107,19 +107,19 @@ func Flag[S Size](r IORegister[S], bit uint8, size uint8) IOFlag[S] {
 	}
 }
 
-func ReadRegisterFlag[S Size](m Memory, flag IOFlag[S]) S {
-	return ReadFlag(ReadIORegister(m, flag.Register), flag.Bit, flag.Size)
+func ReadFlag[S Size](m Memory, flag IOFlag[S]) S {
+	return ReadBits(ReadIORegister(m, flag.Register), flag.Bit, flag.Size)
 }
 
-func SetRegisterFlag[S Size](m Memory, flag IOFlag[S], value S) {
-	SetIORegister(m, flag.Register, SetFlag(ReadIORegister(m, flag.Register), flag.Bit, flag.Size, value))
+func SetFlag[S Size](m Memory, flag IOFlag[S], value S) {
+	SetIORegister(m, flag.Register, SetBits(ReadIORegister(m, flag.Register), flag.Bit, flag.Size, value))
 }
 
-func ReadFlag[S Size](v S, bit uint8, size uint8) S {
+func ReadBits[S Size](v S, bit uint8, size uint8) S {
 	return v >> bit & (1<<size - 1)
 }
 
-func SetFlag[S Size](v S, bit uint8, size uint8, value S) S {
+func SetBits[S Size](v S, bit uint8, size uint8, value S) S {
 	mask := S(1<<size-1) << bit
 	v &= ^mask
 	v |= value << bit
