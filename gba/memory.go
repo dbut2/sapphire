@@ -116,7 +116,7 @@ func SetFlag[S Size](m Memory, flag IOFlag[S], value S) {
 }
 
 func ReadBits[S Size](v S, bit uint8, size uint8) S {
-	return v >> bit & (1<<size - 1)
+	return (v >> bit) & (1<<size - 1)
 }
 
 func SetBits[S Size](v S, bit uint8, size uint8, value S) S {

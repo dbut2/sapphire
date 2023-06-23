@@ -66,7 +66,7 @@ func (c CPU) registerAddr(r uint32) *uint32 {
 			0x13: &c.R8,
 			0x17: &c.R8,
 			0x1B: &c.R8,
-		}[ReadBits(c.CPSR, 0, 5)],
+		}[*c.cpsrAddr()],
 		9: map[uint32]*uint32{
 			0x10: &c.R9,
 			0x11: &c.R9_fiq,
@@ -74,7 +74,7 @@ func (c CPU) registerAddr(r uint32) *uint32 {
 			0x13: &c.R9,
 			0x17: &c.R9,
 			0x1B: &c.R9,
-		}[ReadBits(c.CPSR, 0, 5)],
+		}[*c.cpsrAddr()],
 		10: map[uint32]*uint32{
 			0x10: &c.R10,
 			0x11: &c.R10_fiq,
@@ -82,7 +82,7 @@ func (c CPU) registerAddr(r uint32) *uint32 {
 			0x13: &c.R10,
 			0x17: &c.R10,
 			0x1B: &c.R10,
-		}[ReadBits(c.CPSR, 0, 5)],
+		}[*c.cpsrAddr()],
 		11: map[uint32]*uint32{
 			0x10: &c.R11,
 			0x11: &c.R11_fiq,
@@ -90,7 +90,7 @@ func (c CPU) registerAddr(r uint32) *uint32 {
 			0x13: &c.R11,
 			0x17: &c.R11,
 			0x1B: &c.R11,
-		}[ReadBits(c.CPSR, 0, 5)],
+		}[*c.cpsrAddr()],
 		12: map[uint32]*uint32{
 			0x10: &c.R12,
 			0x11: &c.R12_fiq,
@@ -98,7 +98,7 @@ func (c CPU) registerAddr(r uint32) *uint32 {
 			0x13: &c.R12,
 			0x17: &c.R12,
 			0x1B: &c.R12,
-		}[ReadBits(c.CPSR, 0, 5)],
+		}[*c.cpsrAddr()],
 		13: map[uint32]*uint32{
 			0x10: &c.R13,
 			0x11: &c.R13_fiq,
@@ -106,7 +106,7 @@ func (c CPU) registerAddr(r uint32) *uint32 {
 			0x13: &c.R13_svc,
 			0x17: &c.R13_abt,
 			0x1B: &c.R13_und,
-		}[ReadBits(c.CPSR, 0, 5)],
+		}[*c.cpsrAddr()],
 		14: map[uint32]*uint32{
 			0x10: &c.R14,
 			0x11: &c.R14_fiq,
@@ -114,9 +114,13 @@ func (c CPU) registerAddr(r uint32) *uint32 {
 			0x13: &c.R14_svc,
 			0x17: &c.R14_abt,
 			0x1B: &c.R14_und,
-		}[ReadBits(c.CPSR, 0, 5)],
+		}[*c.cpsrAddr()],
 		15: &c.R15,
 	}[r]
+}
+
+func (c CPU) cpsrAddr() *uint32 {
+	return &c.CPSR
 }
 
 func (c CPU) spsrAddr() *uint32 {
@@ -126,7 +130,7 @@ func (c CPU) spsrAddr() *uint32 {
 		0x13: &c.SPSR_svc,
 		0x17: &c.SPSR_abt,
 		0x1B: &c.SPSR_und,
-	}[ReadBits(c.CPSR, 0, 5)]
+	}[*c.cpsrAddr()]
 }
 
 type Register struct {
@@ -137,7 +141,7 @@ func (c CPU) Do(instruction uint32) {
 	map[uint32]func(uint32){
 		0: c.Thumb,
 		1: c.Arm,
-	}[0](instruction) // todo
+	}[1](instruction) // todo
 }
 
 func (c CPU) Arm(instruction uint32) {
@@ -145,7 +149,7 @@ func (c CPU) Arm(instruction uint32) {
 		0: c.ArmBranch,
 		1: c.ArmALU,
 		2: c.ArmMul,
-	}[0](instruction) // todo
+	}[1](instruction) // todo
 }
 
 func (c CPU) ArmBranch(instruction uint32) {
@@ -209,50 +213,48 @@ func (c CPU) Arm_ADD(instruction uint32) { // Rd = Rn+Op2
 }
 
 func (c CPU) Arm_ADC(instruction uint32) { // Rd = Rn+Op2+Cy
-	Rd := ReadBits(instruction, 12, 4)
-	Rn := ReadBits(instruction, 16, 4)
-	Op2 := ReadBits(instruction, 0, 4)
-	*c.registerAddr(Rd) = *c.registerAddr(Rn) + *c.registerAddr(Op2) + *c.registerAddr(Cy)
+	//Rd := ReadBits(instruction, 12, 4)
+	//Rn := ReadBits(instruction, 16, 4)
+	//Op2 := ReadBits(instruction, 0, 4)
+	//*c.registerAddr(Rd) = *c.registerAddr(Rn) + *c.registerAddr(Op2) + *c.registerAddr(Cy)
 }
 
 func (c CPU) Arm_SBC(instruction uint32) { // Rd = Rn-Op2+Cy-1
-	Rd := ReadBits(instruction, 12, 4)
-	Rn := ReadBits(instruction, 16, 4)
-	Op2 := ReadBits(instruction, 0, 4)
-	*c.registerAddr(Rd) = *c.registerAddr(Rn) - *c.registerAddr(Op2) + *c.registerAddr(Cy) - 1
-
+	//Rd := ReadBits(instruction, 12, 4)
+	//Rn := ReadBits(instruction, 16, 4)
+	//Op2 := ReadBits(instruction, 0, 4)
+	//*c.registerAddr(Rd) = *c.registerAddr(Rn) - *c.registerAddr(Op2) + *c.registerAddr(Cy) - 1
 }
 
 func (c CPU) Arm_RSC(instruction uint32) { // Rd = Op2-Rn+Cy-1
-	Rd := ReadBits(instruction, 12, 4)
-	Rn := ReadBits(instruction, 16, 4)
-	Op2 := ReadBits(instruction, 0, 4)
-	*c.registerAddr(Rd) = *c.registerAddr(Op2) - *c.registerAddr(Rn) + *c.registerAddr(Cy) - 1
+	//Rd := ReadBits(instruction, 12, 4)
+	//Rn := ReadBits(instruction, 16, 4)
+	//Op2 := ReadBits(instruction, 0, 4)
+	//*c.registerAddr(Rd) = *c.registerAddr(Op2) - *c.registerAddr(Rn) + *c.registerAddr(Cy) - 1
 }
 
 func (c CPU) Arm_TST(instruction uint32) { // Void = Rn AND Op2
-	Rn := ReadBits(instruction, 16, 4)
-	Op2 := ReadBits(instruction, 0, 4)
-	*c.registerAddr(Rn) & *c.registerAddr(Op2)
-
+	//Rn := ReadBits(instruction, 16, 4)
+	//Op2 := ReadBits(instruction, 0, 4)
+	//*c.registerAddr(Rn) & *c.registerAddr(Op2)
 }
 
 func (c CPU) Arm_TEQ(instruction uint32) { // Void = Rn XOR Op2
-	Rn := ReadBits(instruction, 16, 4)
-	Op2 := ReadBits(instruction, 0, 4)
-	*c.registerAddr(Rn) ^ *c.registerAddr(Op2)
+	//Rn := ReadBits(instruction, 16, 4)
+	//Op2 := ReadBits(instruction, 0, 4)
+	//*c.registerAddr(Rn) ^ *c.registerAddr(Op2)
 }
 
 func (c CPU) Arm_CMP(instruction uint32) { // Void = Rn-Op2
-	Rn := ReadBits(instruction, 16, 4)
-	Op2 := ReadBits(instruction, 0, 4)
-	*c.registerAddr(Rn) - *c.registerAddr(Op2)
+	//Rn := ReadBits(instruction, 16, 4)
+	//Op2 := ReadBits(instruction, 0, 4)
+	//*c.registerAddr(Rn) - *c.registerAddr(Op2)
 }
 
 func (c CPU) Arm_CMN(instruction uint32) { // Void = Rn+Op2
-	Rn := ReadBits(instruction, 16, 4)
-	Op2 := ReadBits(instruction, 0, 4)
-	*c.registerAddr(Rn) + *c.registerAddr(Op2)
+	//Rn := ReadBits(instruction, 16, 4)
+	//Op2 := ReadBits(instruction, 0, 4)
+	//*c.registerAddr(Rn) + *c.registerAddr(Op2)
 }
 
 func (c CPU) Arm_ORR(instruction uint32) { // Rd = Rn OR Op2
