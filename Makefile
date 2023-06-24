@@ -14,3 +14,11 @@ build: clean
 package: build
 	zip -r build/sapphire.zip Sapphire.app
 	hdiutil create -volname Sapphire -srcfolder Sapphire.app -ov -format UDZO build/sapphire.dmg
+
+.PHONY: test
+test:
+	go test ./...
+
+.PHONY: lint
+lint:
+	golangci-lint run
