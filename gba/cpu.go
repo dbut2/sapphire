@@ -141,12 +141,6 @@ type Register struct {
 	R [16]uint32
 }
 
-//\d+: c.(\w+),
-//func (c CPU) $1(instruction uint32) {\n\n}\n
-
-//\t\t(\w+)(\{cond\})?(\w+).*
-//\t\t: c.Arm_$1$3,
-
 func (c CPU) Do(instruction uint32) {
 	map[uint32]func(uint32){
 		0: c.Thumb,
@@ -154,17 +148,19 @@ func (c CPU) Do(instruction uint32) {
 	}[1](instruction) // todo
 }
 
+//\t\t(\w+)(\{cond\})?(\w+).*
+//\t\t: c.Arm_$1$3,
+
+//\d+: c.(\w+),
+//func (c CPU) $1(instruction uint32) {\n\n}\n
+
 func (c CPU) Arm(instruction uint32) {
 	map[uint32]func(uint32){
-		0: c.ArmBranch,
-		1: c.ArmALU,
-		2: c.ArmMul,
+		0: c.ArmALU,
+		1: c.ArmMul,
+		2: c.ArmBranch,
 		3: c.ArmMemory,
 	}[1](instruction) // todo
-}
-
-func (c CPU) ArmBranch(instruction uint32) {
-	map[uint32]func(uint32){}[0](instruction) // todo
 }
 
 func (c CPU) ArmALU(instruction uint32) {
@@ -434,25 +430,24 @@ func (c CPU) Arm_PLD(instruction uint32) {
 
 }
 
-func (c CPU) ArmJump(instruction uint32) {
+func (c CPU) ArmBranch(instruction uint32) {
 	map[uint32]func(uint32){
 		0: c.Arm_B,
 		1: c.Arm_BL,
 		2: c.Arm_BX,
 		3: c.Arm_BLX,
-		4: c.Arm_BLX,
-		5: c.Arm_MRS,
-		6: c.Arm_MSR,
-		7: c.Arm_SWI,
-		8: c.Arm_BKPT,
+		4: c.Arm_MRS,
+		5: c.Arm_MSR,
+		6: c.Arm_SWI,
+		7: c.Arm_BKPT,
 		//The Undefined Instruction    2S+1I+1N ----  PC=4, ARM Und mode, LR=$+4
 		//cond=false                   1S       ----  Any opcode with condition=false
-		11: c.Arm_NOP,
-		12: c.Arm_CLZ,
-		13: c.Arm_QADD,
-		14: c.Arm_QSUB,
-		15: c.Arm_QDADD,
-		16: c.Arm_QDSUB,
+		10: c.Arm_NOP,
+		11: c.Arm_CLZ,
+		12: c.Arm_QADD,
+		13: c.Arm_QSUB,
+		14: c.Arm_QDADD,
+		15: c.Arm_QDSUB,
 	}[0](instruction) // todo
 
 }
@@ -466,10 +461,6 @@ func (c CPU) Arm_BL(instruction uint32) {
 }
 
 func (c CPU) Arm_BX(instruction uint32) {
-
-}
-
-func (c CPU) Arm_BLX(instruction uint32) {
 
 }
 
@@ -560,6 +551,241 @@ func (c CPU) Arm_MRRC(instruction uint32) {
 
 }
 
+//\t\t(\w+)(\{cond\})?(\w+).*
+//\t\t: c.Thumb_$1$3,
+
+//\d+: c.(\w+),
+//func (c CPU) $1(instruction uint32) {\n\n}\n
+
 func (c CPU) Thumb(instruction uint32) {
-	map[uint32]func(uint32){}[0](instruction)
+	map[uint32]func(uint32){
+		0: c.ThumbALU,
+		1: c.ThumbBranch,
+		2: c.ThumbMemory,
+	}[0](instruction) // todo
+}
+
+func (c CPU) ThumbALU(instruction uint32) {
+	map[uint32]func(uint32){
+		0:  c.Thumb_MOV,
+		1:  c.Thumb_MVN,
+		2:  c.Thumb_AND,
+		3:  c.Thumb_TST,
+		4:  c.Thumb_BIC,
+		5:  c.Thumb_ORR,
+		6:  c.Thumb_EOR,
+		7:  c.Thumb_LSL,
+		8:  c.Thumb_LSR,
+		9:  c.Thumb_ASR,
+		10: c.Thumb_ROR,
+		11: c.Thumb_NOP,
+		12: c.Thumb_ADD,
+		13: c.Thumb_ADC,
+		14: c.Thumb_SUB,
+		15: c.Thumb_SBC,
+		16: c.Thumb_NEG,
+		17: c.Thumb_CMP,
+		18: c.Thumb_CMN,
+		19: c.Thumb_MUL,
+	}[0](instruction) // todo
+}
+
+func (c CPU) Thumb_MOV(instruction uint32) {
+
+}
+
+func (c CPU) Thumb_MVN(instruction uint32) {
+
+}
+
+func (c CPU) Thumb_AND(instruction uint32) {
+
+}
+
+func (c CPU) Thumb_TST(instruction uint32) {
+
+}
+
+func (c CPU) Thumb_BIC(instruction uint32) {
+
+}
+
+func (c CPU) Thumb_ORR(instruction uint32) {
+
+}
+
+func (c CPU) Thumb_EOR(instruction uint32) {
+
+}
+
+func (c CPU) Thumb_LSL(instruction uint32) {
+
+}
+
+func (c CPU) Thumb_LSR(instruction uint32) {
+
+}
+
+func (c CPU) Thumb_ASR(instruction uint32) {
+
+}
+
+func (c CPU) Thumb_ROR(instruction uint32) {
+
+}
+
+func (c CPU) Thumb_NOP(instruction uint32) {
+
+}
+
+func (c CPU) Thumb_ADD(instruction uint32) {
+
+}
+
+func (c CPU) Thumb_ADC(instruction uint32) {
+
+}
+
+func (c CPU) Thumb_SUB(instruction uint32) {
+
+}
+
+func (c CPU) Thumb_SBC(instruction uint32) {
+
+}
+
+func (c CPU) Thumb_NEG(instruction uint32) {
+
+}
+
+func (c CPU) Thumb_CMP(instruction uint32) {
+
+}
+
+func (c CPU) Thumb_CMN(instruction uint32) {
+
+}
+
+func (c CPU) Thumb_MUL(instruction uint32) {
+
+}
+
+func (c CPU) ThumbBranch(instruction uint32) {
+	map[uint32]func(uint32){
+		0: c.Thumb_B,
+		1: c.Thumb_BL,
+		//B{cond=true} disp   2S+1N     ---- 16  PC=$+/-0..256
+		//B{cond=false} disp  1S        ---- 16  N/A
+		4:  c.Thumb_BX,
+		5:  c.Thumb_SWI,
+		6:  c.Thumb_BKPT,
+		7:  c.Thumb_BLX,
+		8:  c.Thumb_POP,
+		9:  c.Thumb_MOV,
+		10: c.Thumb_ADD,
+	}[0](instruction) // todo
+}
+
+func (c CPU) Thumb_B(instruction uint32) {
+
+}
+
+func (c CPU) Thumb_BL(instruction uint32) {
+
+}
+
+//B{cond=true} disp   2S+1N     ---- 16  PC=$+/-0..256
+//B{cond=false} disp  1S        ---- 16  N/A
+
+func (c CPU) Thumb_BX(instruction uint32) {
+
+}
+
+func (c CPU) Thumb_SWI(instruction uint32) {
+
+}
+
+func (c CPU) Thumb_BKPT(instruction uint32) {
+
+}
+
+func (c CPU) Thumb_BLX(instruction uint32) {
+
+}
+
+func (c CPU) Thumb_POP(instruction uint32) {
+
+}
+
+func (c CPU) Thumb_MOV(instruction uint32) {
+
+}
+
+func (c CPU) Thumb_ADD(instruction uint32) {
+
+}
+
+func (c CPU) ThumbMemory(instruction uint32) {
+	map[uint32]func(uint32){
+		0:  c.Thumb_LDR,
+		1:  c.Thumb_LDRB,
+		2:  c.Thumb_LDRH,
+		3:  c.Thumb_LDSB,
+		4:  c.Thumb_LDSH,
+		5:  c.Thumb_STR,
+		6:  c.Thumb_STRB,
+		7:  c.Thumb_STRH,
+		8:  c.Thumb_PUSH,
+		9:  c.Thumb_POP,
+		10: c.Thumb_STMIA,
+		11: c.Thumb_LDMIA,
+	}[0](instruction) // todo
+}
+
+func (c CPU) Thumb_LDR(instruction uint32) {
+
+}
+
+func (c CPU) Thumb_LDRB(instruction uint32) {
+
+}
+
+func (c CPU) Thumb_LDRH(instruction uint32) {
+
+}
+
+func (c CPU) Thumb_LDSB(instruction uint32) {
+
+}
+
+func (c CPU) Thumb_LDSH(instruction uint32) {
+
+}
+
+func (c CPU) Thumb_STR(instruction uint32) {
+
+}
+
+func (c CPU) Thumb_STRB(instruction uint32) {
+
+}
+
+func (c CPU) Thumb_STRH(instruction uint32) {
+
+}
+
+func (c CPU) Thumb_PUSH(instruction uint32) {
+
+}
+
+func (c CPU) Thumb_POP(instruction uint32) {
+
+}
+
+func (c CPU) Thumb_STMIA(instruction uint32) {
+
+}
+
+func (c CPU) Thumb_LDMIA(instruction uint32) {
+
 }
