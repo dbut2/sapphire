@@ -64,7 +64,7 @@ func SetMemoryBlock(m Memory, mb MemoryBlock, value []byte) {
 type IORegister[S Size] uint32
 
 type Size interface {
-	uint8 | uint16 | uint32
+	uint8 | uint16 | uint32 | uint64
 }
 
 func ReadIORegister[S Size](m Memory, r IORegister[S]) S {
