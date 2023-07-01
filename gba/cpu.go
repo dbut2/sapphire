@@ -168,6 +168,10 @@ func (c *CPU) cpsrState() uint32 {
 	return ReadBits(c.CPSR, 5, 1)
 }
 
+func (c *CPU) cpsrSetState(value uint32) {
+	c.CPSR = SetBits(c.CPSR, 5, 1, value)
+}
+
 func (c *CPU) cpsrSetN(value uint32) {
 	c.CPSR = SetBits(c.CPSR, 31, 1, value)
 }
@@ -516,19 +520,19 @@ func (c *CPU) Arm_SetCPSRArithSub(instruction uint32, left, right uint32, value 
 func (c *CPU) shift(shiftType uint32, S uint32, value uint32, amount uint32) uint32 {
 	if S == 1 {
 		switch shiftType {
-		case 0:
+		case LSL:
 			if value&(1<<(32-amount)) > 0 {
 				c.cpsrSetC(1)
 			} else {
 				c.cpsrSetC(0)
 			}
-		case 1, 2:
+		case LSR, ASR:
 			if value&(1<<(amount-1)) > 0 {
 				c.cpsrSetC(1)
 			} else {
 				c.cpsrSetC(0)
 			}
-		case 3:
+		case ROR:
 			if (value>>(amount-1))&1 > 0 {
 				c.cpsrSetC(1)
 			} else {
@@ -539,6 +543,13 @@ func (c *CPU) shift(shiftType uint32, S uint32, value uint32, amount uint32) uin
 
 	return shift(shiftType, value, amount)
 }
+
+const (
+	LSL uint32 = iota
+	LSR
+	ASR
+	ROR
+)
 
 func shift(shiftType uint32, value uint32, amount uint32) uint32 {
 	switch shiftType {
@@ -737,18 +748,161 @@ func (c *CPU) Thumb(instruction uint16) {
 		c.ThumbALU(instruction)
 	case instruction&0b1111_1100_0000_0000 == 0b0100_0100_0000_0000:
 		c.ThumbHiReg(instruction)
+	case instruction&0b1111_1000_0000_0000 == 0b0001_1000_0000_0000:
+		c.ThumbAddSub(instruction)
+	case instruction&0b1111_1000_0000_0000 == 0b0100_1000_0000_0000:
+		c.ThumbMemoryPCRel(instruction)
+	case instruction&0b1111_0010_0000_0000 == 0b0101_0000_0000_0000:
+		c.ThumbMemoryReg(instruction)
+	case instruction&0b1111_0010_0000_0000 == 0b0101_0010_0000_0000:
+		c.ThumbMemorySign(instruction)
+	case instruction&0b1110_0000_0000_0000 == 0b0110_0000_0000_0000:
+		c.ThumbMemoryImm(instruction)
+	case instruction&0b1111_0000_0000_0000 == 0b1000_0000_0000_0000:
+		c.ThumbMemoryHalf(instruction)
+	case instruction&0b1111_0000_0000_0000 == 0b1001_0000_0000_0000:
+		c.ThumbMemorySPRel(instruction)
+	case instruction&0b1110_0000_0000_0000 == 0b0000_0000_0000_0000:
+		c.ThumbShift(instruction)
+	case instruction&0b1110_0000_0000_0000 == 0b0010_0000_0000_0000:
+		c.ThumbImm(instruction)
 	default:
 		panic(instruction)
 	}
 }
 
+func (c *CPU) ThumbShift(instruction uint16) {
+	map[uint16]func(uint16){
+		0b00: c.Thumb_LSL,
+		0b01: c.Thumb_LSR,
+		0b10: c.Thumb_ASR,
+	}[ReadBits(instruction, 11, 2)](instruction)
+}
+
+func (c *CPU) Thumb_LSL(instruction uint16) {
+	Rd := ReadBits(uint32(instruction), 0, 3)
+	Rs := ReadBits(uint32(instruction), 3, 3)
+	Offset := ReadBits(uint32(instruction), 6, 5)
+
+	value := shift(LSL, *c.registerAddr(Rs), Offset)
+
+	*c.registerAddr(Rd) = value
+}
+
+func (c *CPU) Thumb_LSR(instruction uint16) {
+	Rd := ReadBits(uint32(instruction), 0, 3)
+	Rs := ReadBits(uint32(instruction), 3, 3)
+	Offset := ReadBits(uint32(instruction), 6, 5)
+
+	value := shift(LSR, *c.registerAddr(Rs), Offset)
+
+	*c.registerAddr(Rd) = value
+}
+
+func (c *CPU) Thumb_ASR(instruction uint16) {
+	Rd := ReadBits(uint32(instruction), 0, 3)
+	Rs := ReadBits(uint32(instruction), 3, 3)
+	Offset := ReadBits(uint32(instruction), 6, 5)
+
+	value := shift(ASR, *c.registerAddr(Rs), Offset)
+
+	*c.registerAddr(Rd) = value
+}
+
+func (c *CPU) ThumbAddSub(instruction uint16) {
+	map[uint16]func(uint16){
+		0: c.Thumb_ADD,
+		1: c.Thumb_ADD,
+	}[ReadBits(instruction, 10, 1)](instruction)
+}
+
+func (c *CPU) Thumb_ADD(instruction uint16) { // Rd=Rs+Rn / Rd=Rs+nn
+	imm := ReadBits(uint32(instruction), 9, 1)
+	Rd := ReadBits(uint32(instruction), 0, 3)
+	Rs := ReadBits(uint32(instruction), 3, 3)
+
+	var value uint32
+	switch imm {
+	case 0:
+		Rn := ReadBits(uint32(instruction), 6, 3)
+		value = *c.registerAddr(Rs) + *c.registerAddr(Rn)
+	case 1:
+		nn := ReadBits(uint32(instruction), 6, 3)
+		value = *c.registerAddr(Rs) + nn
+	}
+
+	*c.registerAddr(Rd) = value
+}
+
+func (c *CPU) Thumb_SUB(instruction uint16) { // Rd=Rs-Rn / Rd=Rs-nn
+	imm := ReadBits(uint32(instruction), 9, 1)
+	Rd := ReadBits(uint32(instruction), 0, 3)
+	Rs := ReadBits(uint32(instruction), 3, 3)
+
+	var value uint32
+	switch imm {
+	case 0:
+		Rn := ReadBits(uint32(instruction), 6, 3)
+		value = *c.registerAddr(Rs) - *c.registerAddr(Rn)
+	case 1:
+		nn := ReadBits(uint32(instruction), 6, 3)
+		value = *c.registerAddr(Rs) - nn
+	}
+
+	*c.registerAddr(Rd) = value
+}
+
+func (c *CPU) ThumbImm(instruction uint16) {
+	map[uint16]func(uint16){
+		0b00: c.Thumb_MOVImm,
+		0b01: c.Thumb_CMPImm,
+		0b10: c.Thumb_ADDImm,
+		0b11: c.Thumb_SUBImm,
+	}[ReadBits(instruction, 11, 2)](instruction)
+}
+
+func (c *CPU) Thumb_MOVImm(instruction uint16) { // Rd = nn
+	Rd := ReadBits(uint32(instruction), 8, 3)
+	nn := ReadBits(uint32(instruction), 0, 8)
+
+	value := nn
+
+	*c.registerAddr(Rd) = value
+}
+
+func (c *CPU) Thumb_CMPImm(instruction uint16) { // Void = Rd - nn
+	Rd := ReadBits(uint32(instruction), 8, 3)
+	nn := ReadBits(uint32(instruction), 0, 8)
+
+	value := *c.registerAddr(Rd) - nn
+	_ = value
+}
+
+func (c *CPU) Thumb_ADDImm(instruction uint16) { // Rd = Rd + nn
+	Rd := ReadBits(uint32(instruction), 8, 3)
+	nn := ReadBits(uint32(instruction), 0, 8)
+
+	value := *c.registerAddr(Rd) + nn
+
+	*c.registerAddr(Rd) = value
+}
+
+func (c *CPU) Thumb_SUBImm(instruction uint16) { // Rd = Rd - nn
+	Rd := ReadBits(uint32(instruction), 8, 3)
+	nn := ReadBits(uint32(instruction), 0, 8)
+
+	value := *c.registerAddr(Rd) - nn
+
+	*c.registerAddr(Rd) = value
+}
+
 func (c *CPU) ThumbALU(instruction uint16) {
-	map[uint32]func(uint16){
+	map[uint16]func(uint16){
 		0x0: c.Thumb_AND,
 		0x1: c.Thumb_EOR,
-		0x2: c.Thumb_LSL,
-		0x3: c.Thumb_LSR,
-		0x4: c.Thumb_ASR,
+		0x2: c.Thumb_LSLALU,
+		0x3: c.Thumb_LSRALU,
+		0x4: c.Thumb_ASRALU,
 		0x5: c.Thumb_ADC,
 		0x6: c.Thumb_SBC,
 		0x7: c.Thumb_ROR,
@@ -760,104 +914,257 @@ func (c *CPU) ThumbALU(instruction uint16) {
 		0xD: c.Thumb_MUL,
 		0xE: c.Thumb_BIC,
 		0xF: c.Thumb_MVN,
-	}[0](instruction)
+	}[ReadBits(instruction, 6, 4)](instruction)
 }
 
-func (c *CPU) Thumb_AND(instruction uint16) {
-	noins(instruction)
+func (c *CPU) Thumb_AND(instruction uint16) { // Rd = Rd AND Rs
+	Rd := ReadBits(uint32(instruction), 0, 3)
+	Rs := ReadBits(uint32(instruction), 3, 3)
+
+	value := *c.registerAddr(Rd) & *c.registerAddr(Rs)
+	*c.registerAddr(Rd) = value
+
+	c.Thumb_SetCPSRLogic(value)
 }
 
-func (c *CPU) Thumb_EOR(instruction uint16) {
-	noins(instruction)
+func (c *CPU) Thumb_EOR(instruction uint16) { // Rd = Rd XOR Rs
+	Rd := ReadBits(uint32(instruction), 0, 3)
+	Rs := ReadBits(uint32(instruction), 3, 3)
+
+	value := *c.registerAddr(Rd) ^ *c.registerAddr(Rs)
+	*c.registerAddr(Rd) = value
+
+	c.Thumb_SetCPSRLogic(value)
 }
 
-func (c *CPU) Thumb_LSL(instruction uint16) {
-	noins(instruction)
+func (c *CPU) Thumb_LSLALU(instruction uint16) { // Rd = Rd << (Rs AND 0FFh)
+	Rd := ReadBits(uint32(instruction), 0, 3)
+	Rs := ReadBits(uint32(instruction), 3, 3)
+
+	value := *c.registerAddr(Rd) << *c.registerAddr(Rs) & 0xFF
+	*c.registerAddr(Rd) = value
 }
 
-func (c *CPU) Thumb_LSR(instruction uint16) {
-	noins(instruction)
+func (c *CPU) Thumb_LSRALU(instruction uint16) { // Rd = Rd >> (Rs AND 0FFh)
+	Rd := ReadBits(uint32(instruction), 0, 3)
+	Rs := ReadBits(uint32(instruction), 3, 3)
+
+	value := *c.registerAddr(Rd) >> *c.registerAddr(Rs) & 0xFF
+	*c.registerAddr(Rd) = value
 }
 
-func (c *CPU) Thumb_ASR(instruction uint16) {
-	noins(instruction)
+func (c *CPU) Thumb_ASRALU(instruction uint16) { // Rd = Rd SAR (Rs AND 0FFh)
+	Rd := ReadBits(uint32(instruction), 0, 3)
+	Rs := ReadBits(uint32(instruction), 3, 3)
+
+	value := shift(ASR, *c.registerAddr(Rd), *c.registerAddr(Rs)&0xFF)
+
+	*c.registerAddr(Rd) = value
 }
 
-func (c *CPU) Thumb_ADC(instruction uint16) {
-	noins(instruction)
+func (c *CPU) Thumb_ADC(instruction uint16) { // Rd = Rd + Rs + Cy
+	Rd := ReadBits(uint32(instruction), 0, 3)
+	Rs := ReadBits(uint32(instruction), 3, 3)
+	Cy := ReadBits(c.CPSR, 29, 1)
+
+	value := *c.registerAddr(Rd) + *c.registerAddr(Rs) + Cy
+	*c.registerAddr(Rd) = value
 }
 
-func (c *CPU) Thumb_SBC(instruction uint16) {
-	noins(instruction)
+func (c *CPU) Thumb_SBC(instruction uint16) { // Rd = Rd - Rs - NOT Cy
+	Rd := ReadBits(uint32(instruction), 0, 3)
+	Rs := ReadBits(uint32(instruction), 3, 3)
+	Cy := ReadBits(c.CPSR, 29, 1)
+
+	value := *c.registerAddr(Rd) - *c.registerAddr(Rs) - ^Cy
+	*c.registerAddr(Rd) = value
 }
 
-func (c *CPU) Thumb_ROR(instruction uint16) {
-	noins(instruction)
+func (c *CPU) Thumb_ROR(instruction uint16) { // Rd = Rd ROR (Rs AND 0FFh)
+	Rd := ReadBits(uint32(instruction), 0, 3)
+	Rs := ReadBits(uint32(instruction), 3, 3)
+
+	value := shift(ROR, *c.registerAddr(Rd), *c.registerAddr(Rs)&0xFF)
+	*c.registerAddr(Rd) = value
 }
 
-func (c *CPU) Thumb_TST(instruction uint16) {
-	noins(instruction)
+func (c *CPU) Thumb_TST(instruction uint16) { // Void = Rd AND Rs
+	Rd := ReadBits(uint32(instruction), 0, 3)
+	Rs := ReadBits(uint32(instruction), 3, 3)
+	Cy := ReadBits(c.CPSR, 29, 1)
+
+	value := *c.registerAddr(Rd)&*c.registerAddr(Rs) + Cy
+
+	c.Thumb_SetCPSRLogic(value)
 }
 
-func (c *CPU) Thumb_NEG(instruction uint16) {
-	noins(instruction)
+func (c *CPU) Thumb_NEG(instruction uint16) { // Rd = 0 - Rs
+	Rd := ReadBits(uint32(instruction), 0, 3)
+	Rs := ReadBits(uint32(instruction), 3, 3)
+
+	value := 0 - *c.registerAddr(Rs)
+	*c.registerAddr(Rd) = value
 }
 
-func (c *CPU) Thumb_CMP(instruction uint16) {
-	noins(instruction)
+func (c *CPU) Thumb_CMP(instruction uint16) { // Void = Rd - Rs
+	Rd := ReadBits(uint32(instruction), 0, 3)
+	Rs := ReadBits(uint32(instruction), 3, 3)
+
+	value := *c.registerAddr(Rd) - *c.registerAddr(Rs)
+	_ = value
 }
 
-func (c *CPU) Thumb_CMN(instruction uint16) {
-	noins(instruction)
+func (c *CPU) Thumb_CMN(instruction uint16) { // Void = Rd + Rs
+	Rd := ReadBits(uint32(instruction), 0, 3)
+	Rs := ReadBits(uint32(instruction), 3, 3)
+
+	value := *c.registerAddr(Rd) + *c.registerAddr(Rs)
+	_ = value
 }
 
-func (c *CPU) Thumb_ORR(instruction uint16) {
-	noins(instruction)
+func (c *CPU) Thumb_ORR(instruction uint16) { // Rd = Rd OR Rs
+	Rd := ReadBits(uint32(instruction), 0, 3)
+	Rs := ReadBits(uint32(instruction), 3, 3)
+
+	value := *c.registerAddr(Rd) | *c.registerAddr(Rs)
+	*c.registerAddr(Rd) = value
+
+	c.Thumb_SetCPSRLogic(value)
 }
 
-func (c *CPU) Thumb_MUL(instruction uint16) {
-	noins(instruction)
+func (c *CPU) Thumb_MUL(instruction uint16) { // Rd = Rd * Rs
+	Rd := ReadBits(uint32(instruction), 0, 3)
+	Rs := ReadBits(uint32(instruction), 3, 3)
+
+	value := *c.registerAddr(Rd) * *c.registerAddr(Rs)
+	*c.registerAddr(Rd) = value
 }
 
-func (c *CPU) Thumb_BIC(instruction uint16) {
-	noins(instruction)
+func (c *CPU) Thumb_BIC(instruction uint16) { // Rd = Rd AND NOT Rs
+	Rd := ReadBits(uint32(instruction), 0, 3)
+	Rs := ReadBits(uint32(instruction), 3, 3)
+
+	value := *c.registerAddr(Rd) & ^*c.registerAddr(Rs)
+	*c.registerAddr(Rd) = value
+
+	c.Thumb_SetCPSRLogic(value)
 }
 
-func (c *CPU) Thumb_MVN(instruction uint16) {
-	noins(instruction)
+func (c *CPU) Thumb_MVN(instruction uint16) { // Rd = NOT Rs
+	Rd := ReadBits(uint32(instruction), 0, 3)
+	Rs := ReadBits(uint32(instruction), 3, 3)
+
+	value := ^*c.registerAddr(Rs)
+	*c.registerAddr(Rd) = value
+
+	c.Thumb_SetCPSRLogic(value)
 }
 
 func (c *CPU) ThumbHiReg(instruction uint16) {
 	map[uint16]func(uint16){
-		0x0: c.Thumb_ADD,
-		0x1: c.Thumb_CMP,
-		0x2: c.Thumb_MOV,
-		0x3: c.Thumb_NOP,
-		0x4: c.Thumb_BX,
-		0x5: c.Thumb_BLX,
-	}[0](instruction) // todo
+		0x0: c.Thumb_ADDHi,
+		0x1: c.Thumb_CMPHi,
+		0x2: c.Thumb_MOVHi,
+		0x3: c.ThumbBranch,
+	}[ReadBits(instruction, 8, 2)](instruction)
 }
 
-func (c *CPU) Thumb_ADD(instruction uint16) {
-	noins(instruction)
+func (c *CPU) Thumb_ADDHi(instruction uint16) { // Rd = Rd+Rs
+	Rd := ReadBits(uint32(instruction), 0, 3) + ReadBits(uint32(instruction), 7, 1)<<3
+	Rs := ReadBits(uint32(instruction), 3, 3) + ReadBits(uint32(instruction), 6, 1)<<3
+
+	value := *c.registerAddr(Rd) + *c.registerAddr(Rs)
+	if Rd == 15 {
+		value += 4
+	}
+	*c.registerAddr(Rd) = value
 }
 
-//func (c *CPU) Thumb_CMP(instruction uint16) {
-//
-//}
+func (c *CPU) Thumb_CMPHi(instruction uint16) { // Void = Rd-Rs
+	Rd := ReadBits(uint32(instruction), 0, 3) + ReadBits(uint32(instruction), 7, 1)<<3
+	Rs := ReadBits(uint32(instruction), 3, 3) + ReadBits(uint32(instruction), 6, 1)<<3
 
-func (c *CPU) Thumb_MOV(instruction uint16) {
-	noins(instruction)
+	value := *c.registerAddr(Rd) - *c.registerAddr(Rs)
+	if Rd == 15 {
+		value += 4
+	}
+	_ = value
 }
 
-func (c *CPU) Thumb_NOP(instruction uint16) {
-	noins(instruction)
+func (c *CPU) Thumb_MOVHi(instruction uint16) { // Rd = Rs
+	if instruction == 0b0100_0110_1100_0000 { // NOP
+		return
+	}
+
+	Rd := ReadBits(uint32(instruction), 0, 3) + ReadBits(uint32(instruction), 7, 1)<<3
+	Rs := ReadBits(uint32(instruction), 3, 3) + ReadBits(uint32(instruction), 6, 1)<<3
+
+	value := *c.registerAddr(Rs)
+	if Rd == 15 {
+		value += 4
+	}
+	*c.registerAddr(Rd) = value
+}
+
+func (c *CPU) ThumbBranch(instruction uint16) { // PC = Rs
+	map[uint16]func(uint16){
+		0: c.Thumb_BX,
+		1: c.Thumb_BLX,
+	}[ReadBits(instruction, 7, 1)](instruction)
 }
 
 func (c *CPU) Thumb_BX(instruction uint16) {
-	noins(instruction)
+	Rs := ReadBits(uint32(instruction), 3, 3) + ReadBits(uint32(instruction), 6, 1)<<3
+
+	value := *c.registerAddr(Rs)
+	T := ReadBits(value, 0, 1)
+	value = value & (0b1111_1111_1111_1100 | T<<1)
+	*c.registerAddr(15) = value + 4
+
+	c.cpsrSetState(T)
 }
 
 func (c *CPU) Thumb_BLX(instruction uint16) {
-	noins(instruction)
+	Rs := ReadBits(uint32(instruction), 3, 3) + ReadBits(uint32(instruction), 6, 1)<<3
+
+	value := *c.registerAddr(Rs)
+	T := ReadBits(value, 0, 1)
+	value = value & (0b1111_1111_1111_1100 | T<<1)
+	*c.registerAddr(14) = value
+
+	c.cpsrSetState(T)
+}
+
+func (c *CPU) Thumb_SetCPSRLogic(value uint32) {
+	c.cpsrSetN(ReadBits(value, 31, 1))
+
+	if value == 0 {
+		c.cpsrSetZ(1)
+	} else {
+		c.cpsrSetZ(0)
+	}
+}
+
+func (c *CPU) ThumbMemoryPCRel(instruction uint16) {
+	noins(instruction) // todo
+}
+
+func (c *CPU) ThumbMemoryReg(instruction uint16) {
+	noins(instruction) // todo
+}
+
+func (c *CPU) ThumbMemoryImm(instruction uint16) {
+	noins(instruction) // todo
+}
+
+func (c *CPU) ThumbMemorySign(instruction uint16) {
+	noins(instruction) // todo
+}
+
+func (c *CPU) ThumbMemoryHalf(instruction uint16) {
+	noins(instruction) // todo
+}
+
+func (c *CPU) ThumbMemorySPRel(instruction uint16) {
+	noins(instruction) // todo
 }
