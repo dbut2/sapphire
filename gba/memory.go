@@ -7,26 +7,31 @@ func NewMemory() Memory {
 }
 
 func (m Memory) Access8(address uint32) uint8 {
+	address = address & ^uint32(0)
 	v := uint8(m[address])
 	return v
 }
 
 func (m Memory) Set8(address uint32, value uint8) {
+	address = address & ^uint32(0)
 	m[address] = uint8(value)
 }
 
 func (m Memory) Access16(address uint32) uint16 {
+	address = address & ^uint32(1)
 	v := uint16(m[address])
 	v += uint16(m[address+1]) << 8
 	return v
 }
 
 func (m Memory) Set16(address uint32, value uint16) {
+	address = address & ^uint32(1)
 	m[address] = uint8(value)
 	m[address+1] = uint8(value >> 8)
 }
 
 func (m Memory) Access32(address uint32) uint32 {
+	address = address & ^uint32(3)
 	v := uint32(m[address])
 	v += uint32(m[address+1]) << 8
 	v += uint32(m[address+2]) << 16
@@ -35,6 +40,7 @@ func (m Memory) Access32(address uint32) uint32 {
 }
 
 func (m Memory) Set32(address uint32, value uint32) {
+	address = address & ^uint32(3)
 	m[address] = uint8(value)
 	m[address+1] = uint8(value >> 8)
 	m[address+2] = uint8(value >> 16)

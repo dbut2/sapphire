@@ -29,10 +29,6 @@ func main() {
 	var gamepak []byte
 	emu := gba.NewEmu(gamepak)
 
-	go func() {
-		emu.CPU.Boot()
-	}()
-
 	setup := testSetup3
 	draw := testDraw3
 
@@ -123,6 +119,7 @@ func main() {
 		}
 	}()
 
+	go emu.CPU.Boot()
 	w.ShowAndRun()
 }
 
