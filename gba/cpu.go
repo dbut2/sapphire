@@ -20,7 +20,7 @@ func (c *CPU) Boot() {
 	c.R13_svc = 0x03007FE0
 	c.R13_irq = 0x03007FA0
 
-	c.cpsrSetMode(SYS)
+	c.cpsrInitMode(SYS)
 	c.prefetchFlush()
 
 	c.Run()
@@ -34,7 +34,7 @@ func (c *CPU) Run() {
 
 		if !c.flushed {
 			c.pipeline[0] = c.pipeline[1]
-			c.pipeline[1] = c.R15
+			c.pipeline[1] = c.R[15]
 
 			c.pcInc()
 		}
@@ -45,9 +45,9 @@ func (c *CPU) Run() {
 func (c *CPU) pcInc() {
 	switch c.cpsrState() {
 	case 0:
-		c.R15 += 4
+		c.R[15] += 4
 	case 1:
-		c.R15 += 2
+		c.R[15] += 2
 	}
 }
 
@@ -63,14 +63,20 @@ func (c *CPU) Step(curr uint32) {
 }
 
 func (c *CPU) prefetchFlush() {
-	c.pipeline[0] = c.R15
+	c.pipeline[0] = c.R[15]
 	c.pcInc()
-	c.pipeline[1] = c.R15
+	c.pipeline[1] = c.R[15]
 	c.pcInc()
 	c.flushed = true
 }
 
 type CPURegisters struct {
+	// registers to interact
+	R    [16]uint32
+	CPSR uint32
+	SPSR uint32
+
+	// registers to be swapped on mode change
 	R0       uint32
 	R1       uint32
 	R2       uint32
@@ -102,7 +108,6 @@ type CPURegisters struct {
 	R14_abt  uint32
 	R14_irq  uint32
 	R14_und  uint32
-	CPSR     uint32
 	SPSR_fiq uint32
 	SPSR_svc uint32
 	SPSR_abt uint32
@@ -201,8 +206,26 @@ func (c *CPU) cpsrMode() uint32 {
 	return ReadBits(c.CPSR, 0, 5)
 }
 
-func (c *CPU) cpsrSetMode(value uint32) {
+func (c *CPU) cpsrInitMode(value uint32) {
 	c.CPSR = SetBits(c.CPSR, 0, 5, value)
+}
+
+func (c *CPU) cpsrSetMode(value uint32) {
+	for i := uint32(0); i <= 15; i++ {
+		*c.registerAddr(i) = c.R[i]
+	}
+	if c.cpsrMode() != 0x10 && c.cpsrMode() != 0x1F {
+		*c.spsrAddr() = c.SPSR
+	}
+
+	c.CPSR = SetBits(c.CPSR, 0, 5, value)
+
+	for i := uint32(0); i <= 15; i++ {
+		c.R[i] = *c.registerAddr(i)
+	}
+	if c.cpsrMode() != 0x10 && c.cpsrMode() != 0x1F {
+		c.SPSR = *c.spsrAddr()
+	}
 }
 
 func (c *CPU) cpsrState() uint32 {
@@ -229,20 +252,40 @@ func (c *CPU) cpsrSetFIQDisable(value uint32) {
 	c.CPSR = SetBits(c.CPSR, 6, 1, value)
 }
 
-func (c *CPU) cpsrSetN(value uint32) {
-	c.CPSR = SetBits(c.CPSR, 31, 1, value)
+func (c *CPU) cpsrN() uint32 {
+	return ReadBits(c.CPSR, 31, 1)
 }
 
-func (c *CPU) cpsrSetZ(value uint32) {
-	c.CPSR = SetBits(c.CPSR, 30, 1, value)
+func (c *CPU) cpsrSetN(value bool) {
+	v := map[bool]uint32{false: 0, true: 1}[value]
+	c.CPSR = SetBits(c.CPSR, 31, 1, v)
 }
 
-func (c *CPU) cpsrSetC(value uint32) {
-	c.CPSR = SetBits(c.CPSR, 29, 1, value)
+func (c *CPU) cpsrZ() uint32 {
+	return ReadBits(c.CPSR, 30, 1)
 }
 
-func (c *CPU) cpsrSetV(value uint32) {
-	c.CPSR = SetBits(c.CPSR, 28, 1, value)
+func (c *CPU) cpsrSetZ(value bool) {
+	v := map[bool]uint32{false: 0, true: 1}[value]
+	c.CPSR = SetBits(c.CPSR, 30, 1, v)
+}
+
+func (c *CPU) cpsrC() uint32 {
+	return ReadBits(c.CPSR, 29, 1)
+}
+
+func (c *CPU) cpsrSetC(value bool) {
+	v := map[bool]uint32{false: 0, true: 1}[value]
+	c.CPSR = SetBits(c.CPSR, 29, 1, v)
+}
+
+func (c *CPU) cpsrV() uint32 {
+	return ReadBits(c.CPSR, 28, 1)
+}
+
+func (c *CPU) cpsrSetV(value bool) {
+	v := map[bool]uint32{false: 0, true: 1}[value]
+	c.CPSR = SetBits(c.CPSR, 28, 1, v)
 }
 
 const (
@@ -275,8 +318,8 @@ func (c *CPU) exception(vector uint32) {
 		c.cpsrSetMode(FIQ)
 	}
 
-	*c.registerAddr(14) = c.R15
-	*c.spsrAddr() = c.CPSR
+	c.R[14] = c.R[15]
+	c.SPSR = c.CPSR
 
 	c.cpsrSetState(0)
 	c.cpsrSetIRQDisable(1)
@@ -285,7 +328,7 @@ func (c *CPU) exception(vector uint32) {
 		c.cpsrSetFIQDisable(1)
 	}
 
-	c.R15 = vector
+	c.R[15] = vector
 }
 
 func (c *CPU) Arm(instruction uint32) {
@@ -347,7 +390,7 @@ func (c *CPU) Arm_AND(instruction uint32) { // Rd = Rn AND Op2
 	Op2 := c.Arm_Op2(instruction)
 
 	value := Rn & Op2
-	*c.registerAddr(Rd) = value
+	c.R[Rd] = value
 
 	c.Arm_SetCPSRLogic(instruction, value)
 }
@@ -358,7 +401,7 @@ func (c *CPU) Arm_EOR(instruction uint32) { // Rd = Rn XOR Op2
 	Op2 := c.Arm_Op2(instruction)
 
 	value := Rn ^ Op2
-	*c.registerAddr(Rd) = value
+	c.R[Rd] = value
 
 	c.Arm_SetCPSRLogic(instruction, value)
 }
@@ -369,7 +412,7 @@ func (c *CPU) Arm_SUB(instruction uint32) { // Rd = Rn-Op2
 	Op2 := c.Arm_Op2(instruction)
 
 	value := uint64(Rn) - uint64(Op2)
-	*c.registerAddr(Rd) = uint32(value)
+	c.R[Rd] = uint32(value)
 
 	c.Arm_SetCPSRArithSub(instruction, Rn, Op2, value)
 }
@@ -380,7 +423,7 @@ func (c *CPU) Arm_RSB(instruction uint32) { // Rd = Op2-Rn
 	Op2 := c.Arm_Op2(instruction)
 
 	value := uint64(Op2) - uint64(Rn)
-	*c.registerAddr(Rd) = uint32(value)
+	c.R[Rd] = uint32(value)
 
 	c.Arm_SetCPSRArithSub(instruction, Op2, Rn, value)
 }
@@ -391,7 +434,7 @@ func (c *CPU) Arm_ADD(instruction uint32) { // Rd = Rn+Op2
 	Op2 := c.Arm_Op2(instruction)
 
 	value := uint64(Rn) + uint64(Op2)
-	*c.registerAddr(Rd) = uint32(value)
+	c.R[Rd] = uint32(value)
 
 	c.Arm_SetCPSRArithAdd(instruction, Rn, Op2, value)
 }
@@ -403,7 +446,7 @@ func (c *CPU) Arm_ADC(instruction uint32) { // Rd = Rn+Op2+Cy
 	Op2 := c.Arm_Op2(instruction)
 
 	value := uint64(Rn) + uint64(Op2) + uint64(Cy)
-	*c.registerAddr(Rd) = uint32(value)
+	c.R[Rd] = uint32(value)
 
 	c.Arm_SetCPSRArithAdd(instruction, Rn, Op2, value)
 }
@@ -415,7 +458,7 @@ func (c *CPU) Arm_SBC(instruction uint32) { // Rd = Rn-Op2+Cy-1
 	Op2 := c.Arm_Op2(instruction)
 
 	value := uint64(Rn) - uint64(Op2) + uint64(Cy) - 1
-	*c.registerAddr(Rd) = uint32(value)
+	c.R[Rd] = uint32(value)
 
 	c.Arm_SetCPSRArithSub(instruction, Rn, Op2, value)
 }
@@ -427,7 +470,7 @@ func (c *CPU) Arm_RSC(instruction uint32) { // Rd = Op2-Rn+Cy-1
 	Op2 := c.Arm_Op2(instruction)
 
 	value := uint64(Op2) - uint64(Rn) + uint64(Cy) - 1
-	*c.registerAddr(Rd) = uint32(value)
+	c.R[Rd] = uint32(value)
 
 	c.Arm_SetCPSRArithSub(instruction, Op2, Rn, value)
 }
@@ -474,7 +517,7 @@ func (c *CPU) Arm_ORR(instruction uint32) { // Rd = Rn OR Op2
 	Op2 := c.Arm_Op2(instruction)
 
 	value := Rn | Op2
-	*c.registerAddr(Rd) = value
+	c.R[Rd] = value
 
 	c.Arm_SetCPSRLogic(instruction, value)
 }
@@ -484,7 +527,7 @@ func (c *CPU) Arm_MOV(instruction uint32) { // Rd = Op2
 	Op2 := c.Arm_Op2(instruction)
 
 	value := Op2
-	*c.registerAddr(Rd) = value
+	c.R[Rd] = value
 
 	c.Arm_SetCPSRLogic(instruction, value)
 }
@@ -495,7 +538,7 @@ func (c *CPU) Arm_BIC(instruction uint32) { // Rd = Rn AND NOT Op2
 	Op2 := c.Arm_Op2(instruction)
 
 	value := Rn & ^Op2
-	*c.registerAddr(Rd) = value
+	c.R[Rd] = value
 
 	c.Arm_SetCPSRLogic(instruction, value)
 }
@@ -505,7 +548,7 @@ func (c *CPU) Arm_MVN(instruction uint32) { // Rd = NOT Op2
 	Op2 := c.Arm_Op2(instruction)
 
 	value := ^Op2
-	*c.registerAddr(Rd) = value
+	c.R[Rd] = value
 
 	c.Arm_SetCPSRLogic(instruction, value)
 }
@@ -516,10 +559,10 @@ func (c *CPU) Arm_Rn(instruction uint32) uint32 {
 		I := ReadBits(instruction, 25, 1)
 		R := ReadBits(instruction, 4, 1)
 		if I == 0 && R == 1 {
-			return *c.registerAddr(Rn) + 4
+			return c.R[Rn] + 4
 		}
 	}
-	return *c.registerAddr(Rn)
+	return c.R[Rn]
 }
 
 func (c *CPU) Arm_Rm(instruction uint32) uint32 {
@@ -528,10 +571,10 @@ func (c *CPU) Arm_Rm(instruction uint32) uint32 {
 		I := ReadBits(instruction, 25, 1)
 		R := ReadBits(instruction, 4, 1)
 		if I == 0 && R == 1 {
-			return *c.registerAddr(Rm) + 4
+			return c.R[Rm] + 4
 		}
 	}
-	return *c.registerAddr(Rm)
+	return c.R[Rm]
 }
 
 func (c *CPU) Arm_Op2(instruction uint32) uint32 {
@@ -546,10 +589,10 @@ func (c *CPU) Arm_Op2(instruction uint32) uint32 {
 		switch R {
 		case 0:
 			Is := ReadBits(instruction, 7, 5)
-			return c.shift(st, S, Rm, Is)
+			return c.ArmShift(st, Rm, Is, S, I)
 		case 1:
 			Rs := ReadBits(instruction, 8, 4) & 0b11111111
-			return shift(st, Rm, *c.registerAddr(Rs))
+			return c.ArmShift(st, Rm, c.R[Rs], S, I)
 		default:
 			noins(instruction)
 			return 0
@@ -557,93 +600,132 @@ func (c *CPU) Arm_Op2(instruction uint32) uint32 {
 	case 1:
 		Is := ReadBits(instruction, 8, 4) * 2
 		nn := ReadBits(instruction, 0, 8)
-		return c.shift(3, S, nn, Is)
+		return c.ArmShift(ROR, nn, Is, S, 0)
 	default:
 		noins(instruction)
 		return 0
 	}
 }
 
-func (c *CPU) Arm_SetCPSRLogic(instruction uint32, value uint32) {
-	S := ReadBits(instruction, 20, 1)
-	if S == 1 {
-		c.cpsrSetN(ReadBits(value, 31, 1))
-
-		if value == 0 {
-			c.cpsrSetZ(1)
-		} else {
-			c.cpsrSetZ(0)
+func (c *CPU) ArmShift(shiftType uint32, value, amount uint32, S uint32, I uint32) uint32 {
+	switch shiftType {
+	case LSL:
+		if amount == 0 && I == 1 {
+			return value
 		}
+		if amount > 32 {
+			if S == 1 {
+				c.cpsrSetC(false)
+			}
+			return 0
+		}
+		v, carry := ShiftLSL(value, amount)
+		if amount > 0 && S == 1 {
+			c.cpsrSetC(carry)
+		}
+		return v
+	case LSR:
+		if amount == 0 && I == 1 {
+			amount = 32
+		}
+		v, carry := ShiftLSR(value, amount)
+		if amount > 0 && S == 1 {
+			c.cpsrSetC(carry)
+		}
+		return v
+	case ASR:
+		if (amount == 0 && I == 1) || amount > 32 {
+			amount = 32
+		}
+		v, carry := ShiftASR(value, amount)
+		if amount > 0 && S == 1 {
+			c.cpsrSetC(carry)
+		}
+		return v
+	case ROR:
+		if amount == 0 && I == 1 {
+			oldC := c.cpsrC()
+			c.cpsrSetC(ReadBits(value, 0, 1) == 1)
+			v, _ := ShiftROR((value & ^(uint32(1)))|oldC, 1)
+			return v
+		}
+		v, carry := ShiftROR(value, amount)
+		if amount > 0 && S == 1 {
+			c.cpsrSetC(carry)
+		}
+		return v
+	default:
+		panic(fmt.Sprintf("bad shift: %d", shiftType))
 	}
 }
 
-func (c *CPU) Arm_SetCPSRArithAdd(instruction uint32, left, right uint32, value uint64) {
-	S := ReadBits(instruction, 20, 1)
-	if S == 1 {
-		c.cpsrSetN(ReadBits(uint32(value), 31, 1))
-
-		if value == 0 {
-			c.cpsrSetZ(1)
-		} else {
-			c.cpsrSetZ(0)
-		}
-
-		if value >= 1<<32 {
-			c.cpsrSetC(1)
-		} else {
-			c.cpsrSetC(0)
-		}
-
-		c.cpsrSetV(^(left ^ right) & (left ^ uint32(value)) >> 31)
+func Shift(shiftType uint32, value, amount uint32) (uint32, bool) {
+	switch shiftType {
+	case LSL:
+		return ShiftLSR(value, amount)
+	case LSR:
+		return ShiftLSR(value, amount)
+	case ASR:
+		return ShiftASR(value, amount)
+	case ROR:
+		return ShiftROR(value, amount)
+	default:
+		panic(fmt.Sprintf("bad shift: %d", shiftType))
 	}
 }
 
-func (c *CPU) Arm_SetCPSRArithSub(instruction uint32, left, right uint32, value uint64) {
+func ShiftLSL(value, amount uint32) (uint32, bool) {
+	return value << amount, value&(1<<(32-amount)) > 0
+}
+
+func ShiftLSR(value, amount uint32) (uint32, bool) {
+	return value >> amount, value&(1<<(amount-1)) > 0
+}
+
+func ShiftASR(value, amount uint32) (uint32, bool) {
+	s := value & 0x8000_0000
+	for i := uint32(0); i < amount; i++ {
+		value = (value >> 1) | s
+	}
+	return value, value&(1<<(amount-1)) > 0
+}
+
+func ShiftROR(value, amount uint32) (uint32, bool) {
+	return value>>(amount%32) | value<<(32-(amount%32)), (value>>(amount-1))&1 > 0
+}
+
+func (c *CPU) Arm_SetCPSRLogic(instruction uint32, result uint32) {
 	S := ReadBits(instruction, 20, 1)
 	if S == 1 {
-		c.cpsrSetN(ReadBits(uint32(value), 31, 1))
-
-		if value == 0 {
-			c.cpsrSetZ(1)
-		} else {
-			c.cpsrSetZ(0)
-		}
-
-		if value < 1<<32 {
-			c.cpsrSetC(1)
-		} else {
-			c.cpsrSetC(0)
-		}
-
-		c.cpsrSetV((left ^ right) & (left ^ uint32(value)) >> 31)
+		c.cpsrSetN(int32(result) < 0)
+		c.cpsrSetZ(result == 0)
 	}
 }
 
-func (c *CPU) shift(shiftType uint32, S uint32, value uint32, amount uint32) uint32 {
+func (c *CPU) Arm_SetCPSRArithAdd(instruction uint32, left, right uint32, result uint64) {
+	S := ReadBits(instruction, 20, 1)
 	if S == 1 {
-		switch shiftType {
-		case LSL:
-			if value&(1<<(32-amount)) > 0 {
-				c.cpsrSetC(1)
-			} else {
-				c.cpsrSetC(0)
-			}
-		case LSR, ASR:
-			if value&(1<<(amount-1)) > 0 {
-				c.cpsrSetC(1)
-			} else {
-				c.cpsrSetC(0)
-			}
-		case ROR:
-			if (value>>(amount-1))&1 > 0 {
-				c.cpsrSetC(1)
-			} else {
-				c.cpsrSetC(0)
-			}
-		}
-	}
+		carry := result > 0xFFFFFFFF
+		overflow := int64(int32(left))+int64(int32(right)) != int64(int32(result))
 
-	return shift(shiftType, value, amount)
+		c.cpsrSetN(int32(result) < 0)
+		c.cpsrSetZ(result == 0)
+		c.cpsrSetC(carry)
+		c.cpsrSetV(overflow)
+	}
+}
+
+func (c *CPU) Arm_SetCPSRArithSub(instruction uint32, left, right uint32, result uint64) {
+	S := ReadBits(instruction, 20, 1)
+	if S == 1 {
+		borrow := result > uint64(left)                                            // borrow is true if there was an unsigned underflow
+		overflow := int64(int32(left))-int64(int32(right)) != int64(int32(result)) // overflow is true if there was a signed underflow
+
+		c.cpsrSetN(int32(result) < 0)
+		c.cpsrSetZ(result == 0)
+		c.cpsrSetC(!borrow)
+		c.cpsrSetV(overflow)
+	}
 }
 
 const (
@@ -652,25 +734,6 @@ const (
 	ASR
 	ROR
 )
-
-func shift(shiftType uint32, value uint32, amount uint32) uint32 {
-	switch shiftType {
-	case 0: // LSL
-		return value << amount
-	case 1: // LSR
-		return value >> amount
-	case 2: // ASR
-		if value>>31 == 1 {
-			return (value >> amount) | (^uint32(0) << (32 - amount))
-		} else {
-			return value >> amount
-		}
-	case 3: // ROR
-		return (value >> amount) | (value << (32 - amount))
-	default:
-		panic(fmt.Sprintf("bad shift: %d", shiftType))
-	}
-}
 
 func (c *CPU) cond(cond uint32) bool {
 	N := ReadBits(c.CPSR, 31, 1) // Sign flag
@@ -725,13 +788,13 @@ func (c *CPU) ArmBranch(instruction uint32) {
 
 func (c *CPU) Arm_B(instruction uint32) {
 	nn := Signify(ReadBits(instruction, 0, 24), 24) << 2
-	c.R15 = addInt(c.R15, nn)
+	c.R[15] = addInt(c.R[15], nn)
 }
 
 func (c *CPU) Arm_BL(instruction uint32) {
 	nn := Signify(ReadBits(instruction, 0, 24), 24) << 2
-	*c.registerAddr(14) = c.R15
-	c.R15 = addInt(c.R15, nn)
+	c.R[14] = c.R[15]
+	c.R[15] = addInt(c.R[15], nn)
 }
 
 func addInt(a uint32, b int32) uint32 {
@@ -753,16 +816,16 @@ func (c *CPU) ArmBranchX(instruction uint32) {
 func (c *CPU) Arm_BX(instruction uint32) {
 	c.cpsrSetState(1)
 	Rn := ReadBits(instruction, 0, 4)
-	value := SetBits(*c.registerAddr(Rn), 0, 1, 1)
-	c.R15 = value - 1
+	value := SetBits(c.R[Rn], 0, 1, 1)
+	c.R[15] = value - 1
 }
 
 func (c *CPU) Arm_BLX(instruction uint32) {
 	c.cpsrSetState(1)
 	Rn := ReadBits(instruction, 0, 4)
-	value := SetBits(*c.registerAddr(Rn), 0, 1, 1)
-	*c.registerAddr(14) = c.R15
-	c.R15 = value - 1
+	value := SetBits(c.R[Rn], 0, 1, 1)
+	c.R[14] = c.R[15]
+	c.R[15] = value - 1
 }
 
 func (c *CPU) ArmMemory(instruction uint32) {
@@ -781,30 +844,30 @@ func (c *CPU) ArmMemory(instruction uint32) {
 		Is := ReadBits(instruction, 7, 5)
 		ShiftType := ReadBits(instruction, 5, 2)
 		Rm := ReadBits(instruction, 0, 4)
-		Offset = shift(ShiftType, *c.registerAddr(Rm), Is)
+		Offset, _ = Shift(ShiftType, c.R[Rm], Is)
 	}
 
 	if U == 0 {
 		Offset = -Offset
 	}
-	addr := *c.registerAddr(Rn) + Offset
+	addr := c.R[Rn] + Offset
 
 	if L == 1 {
 		if B == 1 {
-			*c.registerAddr(Rd) = uint32(c.Memory.Access8(addr))
+			c.R[Rd] = uint32(c.Memory.Access8(addr))
 		} else {
-			*c.registerAddr(Rd) = c.Memory.Access32(addr)
+			c.R[Rd] = c.Memory.Access32(addr)
 		}
 	} else {
 		if B == 1 {
-			c.Memory.Set8(addr, uint8(*c.registerAddr(Rd)))
+			c.Memory.Set8(addr, uint8(c.R[Rd]))
 		} else {
-			c.Memory.Set32(addr, *c.registerAddr(Rd))
+			c.Memory.Set32(addr, c.R[Rd])
 		}
 	}
 
 	if P == 0 || ReadBits(instruction, 21, 1) == 1 {
-		*c.registerAddr(Rn) = addr
+		c.R[Rn] = addr
 	}
 }
 
@@ -817,7 +880,7 @@ func (c *CPU) ArmMemoryBlock(instruction uint32) {
 	Rn := ReadBits(instruction, 16, 4)
 	Rlist := ReadBits(instruction, 0, 16)
 
-	address := *c.registerAddr(Rn)
+	address := c.R[Rn]
 
 	for i := uint32(0); i < 16; i++ {
 		if (Rlist>>i)&1 == 1 {
@@ -830,12 +893,12 @@ func (c *CPU) ArmMemoryBlock(instruction uint32) {
 			}
 
 			if L == 1 {
-				*c.registerAddr(i) = c.Memory.Access32(address)
+				c.R[i] = c.Memory.Access32(address)
 				if S == 1 && i == 15 && c.CPSR>>29&1 == 0 {
-					c.CPSR = *c.spsrAddr()
+					c.CPSR = c.SPSR
 				}
 			} else {
-				c.Memory.Set32(address, *c.registerAddr(i))
+				c.Memory.Set32(address, c.R[i])
 			}
 
 			if P == 0 {
@@ -849,7 +912,7 @@ func (c *CPU) ArmMemoryBlock(instruction uint32) {
 	}
 
 	if W == 1 {
-		*c.registerAddr(Rn) = address
+		c.R[Rn] = address
 	}
 }
 
@@ -901,9 +964,9 @@ func (c *CPU) Thumb_LSL(instruction uint32) {
 	Rs := ReadBits(instruction, 3, 3)
 	Offset := ReadBits(instruction, 6, 5)
 
-	value := shift(LSL, *c.registerAddr(uint32(Rs)), uint32(Offset))
+	value, _ := Shift(LSL, c.R[uint32(Rs)], uint32(Offset))
 
-	*c.registerAddr(Rd) = value
+	c.R[Rd] = value
 }
 
 func (c *CPU) Thumb_LSR(instruction uint32) {
@@ -911,9 +974,9 @@ func (c *CPU) Thumb_LSR(instruction uint32) {
 	Rs := ReadBits(instruction, 3, 3)
 	Offset := ReadBits(instruction, 6, 5)
 
-	value := shift(LSR, *c.registerAddr(Rs), Offset)
+	value, _ := Shift(LSR, c.R[Rs], Offset)
 
-	*c.registerAddr(Rd) = value
+	c.R[Rd] = value
 }
 
 func (c *CPU) Thumb_ASR(instruction uint32) {
@@ -921,9 +984,9 @@ func (c *CPU) Thumb_ASR(instruction uint32) {
 	Rs := ReadBits(instruction, 3, 3)
 	Offset := ReadBits(instruction, 6, 5)
 
-	value := shift(ASR, *c.registerAddr(Rs), Offset)
+	value, _ := Shift(ASR, c.R[Rs], Offset)
 
-	*c.registerAddr(Rd) = value
+	c.R[Rd] = value
 }
 
 func (c *CPU) ThumbAddSub(instruction uint32) {
@@ -945,36 +1008,23 @@ func (c *CPU) Thumb_ADD(instruction uint32) { // Rd=Rs+Rn / Rd=Rs+nn
 	switch imm {
 	case 0:
 		Rn := ReadBits(instruction, 6, 3)
-		op1 = *c.registerAddr(Rs)
-		op2 = *c.registerAddr(Rn)
+		op1 = c.R[Rs]
+		op2 = c.R[Rn]
 		value = op1 + op2
 	case 1:
 		nn := ReadBits(instruction, 6, 3)
-		op1 = *c.registerAddr(Rs)
+		op1 = c.R[Rs]
 		op2 = nn
 		value = op1 + nn
 	}
 
-	*c.registerAddr(Rd) = value
+	c.R[Rd] = value
 
-	c.cpsrSetN(ReadBits(value, 31, 1))
-	if value == 0 {
-		c.cpsrSetZ(1)
-	} else {
-		c.cpsrSetZ(0)
-	}
+	c.cpsrSetN(int32(value) < 0)
+	c.cpsrSetZ(value == 0)
+	c.cpsrSetC((value < op1) || (value < op2))
+	c.cpsrSetV((op1^op2 < 0) && (op1^value >= 0))
 
-	if (value < op1) || (value < op2) {
-		c.cpsrSetC(1)
-	} else {
-		c.cpsrSetC(0)
-	}
-
-	if (op1^op2 < 0) && (op1^value >= 0) {
-		c.cpsrSetV(1)
-	} else {
-		c.cpsrSetV(0)
-	}
 }
 
 func (c *CPU) Thumb_SUB(instruction uint32) { // Rd=Rs-Rn / Rd=Rs-nn
@@ -989,36 +1039,23 @@ func (c *CPU) Thumb_SUB(instruction uint32) { // Rd=Rs-Rn / Rd=Rs-nn
 	switch imm {
 	case 0:
 		Rn := ReadBits(instruction, 6, 3)
-		op1 = *c.registerAddr(Rs)
-		op2 = *c.registerAddr(Rn)
+		op1 = c.R[Rs]
+		op2 = c.R[Rn]
 		value = op1 - op2
 	case 1:
 		nn := ReadBits(instruction, 6, 3)
-		op1 = *c.registerAddr(Rs)
+		op1 = c.R[Rs]
 		op2 = nn
 		value = op1 - nn
 	}
 
-	*c.registerAddr(Rd) = value
+	c.R[Rd] = value
 
-	c.cpsrSetN(ReadBits(value, 31, 1))
-	if value == 0 {
-		c.cpsrSetZ(1)
-	} else {
-		c.cpsrSetZ(0)
-	}
+	c.cpsrSetN(int32(value) < 0)
+	c.cpsrSetZ(value == 0)
+	c.cpsrSetC(op1 >= op2)
+	c.cpsrSetV((op1^op2 >= 0) && (op1^value < 0))
 
-	if op1 >= op2 {
-		c.cpsrSetC(1)
-	} else {
-		c.cpsrSetC(0)
-	}
-
-	if (op1^op2 >= 0) && (op1^value < 0) {
-		c.cpsrSetV(1)
-	} else {
-		c.cpsrSetV(0)
-	}
 }
 
 func (c *CPU) ThumbImm(instruction uint32) {
@@ -1036,14 +1073,14 @@ func (c *CPU) Thumb_MOVImm(instruction uint32) { // Rd = nn
 
 	value := nn
 
-	*c.registerAddr(Rd) = value
+	c.R[Rd] = value
 }
 
 func (c *CPU) Thumb_CMPImm(instruction uint32) { // Void = Rd - nn
 	Rd := ReadBits(instruction, 8, 3)
 	nn := ReadBits(instruction, 0, 8)
 
-	value := *c.registerAddr(Rd) - nn
+	value := c.R[Rd] - nn
 	_ = value
 }
 
@@ -1051,18 +1088,18 @@ func (c *CPU) Thumb_ADDImm(instruction uint32) { // Rd = Rd + nn
 	Rd := ReadBits(instruction, 8, 3)
 	nn := ReadBits(instruction, 0, 8)
 
-	value := *c.registerAddr(Rd) + nn
+	value := c.R[Rd] + nn
 
-	*c.registerAddr(Rd) = value
+	c.R[Rd] = value
 }
 
 func (c *CPU) Thumb_SUBImm(instruction uint32) { // Rd = Rd - nn
 	Rd := ReadBits(instruction, 8, 3)
 	nn := ReadBits(instruction, 0, 8)
 
-	value := *c.registerAddr(Rd) - nn
+	value := c.R[Rd] - nn
 
-	*c.registerAddr(Rd) = value
+	c.R[Rd] = value
 }
 
 func (c *CPU) ThumbALU(instruction uint32) {
@@ -1090,8 +1127,8 @@ func (c *CPU) Thumb_AND(instruction uint32) { // Rd = Rd AND Rs
 	Rd := ReadBits(instruction, 0, 3)
 	Rs := ReadBits(instruction, 3, 3)
 
-	value := *c.registerAddr(Rd) & *c.registerAddr(Rs)
-	*c.registerAddr(Rd) = value
+	value := c.R[Rd] & c.R[Rs]
+	c.R[Rd] = value
 
 	c.Thumb_SetCPSRLogic(value)
 }
@@ -1100,8 +1137,8 @@ func (c *CPU) Thumb_EOR(instruction uint32) { // Rd = Rd XOR Rs
 	Rd := ReadBits(instruction, 0, 3)
 	Rs := ReadBits(instruction, 3, 3)
 
-	value := *c.registerAddr(Rd) ^ *c.registerAddr(Rs)
-	*c.registerAddr(Rd) = value
+	value := c.R[Rd] ^ c.R[Rs]
+	c.R[Rd] = value
 
 	c.Thumb_SetCPSRLogic(value)
 }
@@ -1110,25 +1147,25 @@ func (c *CPU) Thumb_LSLALU(instruction uint32) { // Rd = Rd << (Rs AND 0FFh)
 	Rd := ReadBits(instruction, 0, 3)
 	Rs := ReadBits(instruction, 3, 3)
 
-	value := *c.registerAddr(Rd) << *c.registerAddr(Rs) & 0xFF
-	*c.registerAddr(Rd) = value
+	value := c.R[Rd] << c.R[Rs] & 0xFF
+	c.R[Rd] = value
 }
 
 func (c *CPU) Thumb_LSRALU(instruction uint32) { // Rd = Rd >> (Rs AND 0FFh)
 	Rd := ReadBits(instruction, 0, 3)
 	Rs := ReadBits(instruction, 3, 3)
 
-	value := *c.registerAddr(Rd) >> *c.registerAddr(Rs) & 0xFF
-	*c.registerAddr(Rd) = value
+	value := c.R[Rd] >> c.R[Rs] & 0xFF
+	c.R[Rd] = value
 }
 
 func (c *CPU) Thumb_ASRALU(instruction uint32) { // Rd = Rd SAR (Rs AND 0FFh)
 	Rd := ReadBits(instruction, 0, 3)
 	Rs := ReadBits(instruction, 3, 3)
 
-	value := shift(ASR, *c.registerAddr(Rd), *c.registerAddr(Rs)&0xFF)
+	value, _ := Shift(ASR, c.R[Rd], c.R[Rs]&0xFF)
 
-	*c.registerAddr(Rd) = value
+	c.R[Rd] = value
 }
 
 func (c *CPU) Thumb_ADC(instruction uint32) { // Rd = Rd + Rs + Cy
@@ -1136,8 +1173,8 @@ func (c *CPU) Thumb_ADC(instruction uint32) { // Rd = Rd + Rs + Cy
 	Rs := ReadBits(instruction, 3, 3)
 	Cy := ReadBits(c.CPSR, 29, 1)
 
-	value := *c.registerAddr(Rd) + *c.registerAddr(Rs) + Cy
-	*c.registerAddr(Rd) = value
+	value := c.R[Rd] + c.R[Rs] + Cy
+	c.R[Rd] = value
 }
 
 func (c *CPU) Thumb_SBC(instruction uint32) { // Rd = Rd - Rs - NOT Cy
@@ -1145,16 +1182,16 @@ func (c *CPU) Thumb_SBC(instruction uint32) { // Rd = Rd - Rs - NOT Cy
 	Rs := ReadBits(instruction, 3, 3)
 	Cy := ReadBits(c.CPSR, 29, 1)
 
-	value := *c.registerAddr(Rd) - *c.registerAddr(Rs) - ^Cy
-	*c.registerAddr(Rd) = value
+	value := c.R[Rd] - c.R[Rs] - ^Cy
+	c.R[Rd] = value
 }
 
 func (c *CPU) Thumb_ROR(instruction uint32) { // Rd = Rd ROR (Rs AND 0FFh)
 	Rd := ReadBits(instruction, 0, 3)
 	Rs := ReadBits(instruction, 3, 3)
 
-	value := shift(ROR, *c.registerAddr(Rd), *c.registerAddr(Rs)&0xFF)
-	*c.registerAddr(Rd) = value
+	value, _ := Shift(ROR, c.R[Rd], c.R[Rs]&0xFF)
+	c.R[Rd] = value
 }
 
 func (c *CPU) Thumb_TST(instruction uint32) { // Void = Rd AND Rs
@@ -1162,7 +1199,7 @@ func (c *CPU) Thumb_TST(instruction uint32) { // Void = Rd AND Rs
 	Rs := ReadBits(instruction, 3, 3)
 	Cy := ReadBits(c.CPSR, 29, 1)
 
-	value := *c.registerAddr(Rd)&*c.registerAddr(Rs) + Cy
+	value := c.R[Rd]&c.R[Rs] + Cy
 
 	c.Thumb_SetCPSRLogic(value)
 }
@@ -1171,15 +1208,15 @@ func (c *CPU) Thumb_NEG(instruction uint32) { // Rd = 0 - Rs
 	Rd := ReadBits(instruction, 0, 3)
 	Rs := ReadBits(instruction, 3, 3)
 
-	value := 0 - *c.registerAddr(Rs)
-	*c.registerAddr(Rd) = value
+	value := 0 - c.R[Rs]
+	c.R[Rd] = value
 }
 
 func (c *CPU) Thumb_CMP(instruction uint32) { // Void = Rd - Rs
 	Rd := ReadBits(instruction, 0, 3)
 	Rs := ReadBits(instruction, 3, 3)
 
-	value := *c.registerAddr(Rd) - *c.registerAddr(Rs)
+	value := c.R[Rd] - c.R[Rs]
 	_ = value
 }
 
@@ -1187,7 +1224,7 @@ func (c *CPU) Thumb_CMN(instruction uint32) { // Void = Rd + Rs
 	Rd := ReadBits(instruction, 0, 3)
 	Rs := ReadBits(instruction, 3, 3)
 
-	value := *c.registerAddr(Rd) + *c.registerAddr(Rs)
+	value := c.R[Rd] + c.R[Rs]
 	_ = value
 }
 
@@ -1195,8 +1232,8 @@ func (c *CPU) Thumb_ORR(instruction uint32) { // Rd = Rd OR Rs
 	Rd := ReadBits(instruction, 0, 3)
 	Rs := ReadBits(instruction, 3, 3)
 
-	value := *c.registerAddr(Rd) | *c.registerAddr(Rs)
-	*c.registerAddr(Rd) = value
+	value := c.R[Rd] | c.R[Rs]
+	c.R[Rd] = value
 
 	c.Thumb_SetCPSRLogic(value)
 }
@@ -1205,16 +1242,16 @@ func (c *CPU) Thumb_MUL(instruction uint32) { // Rd = Rd * Rss
 	Rd := ReadBits(instruction, 0, 3)
 	Rs := ReadBits(instruction, 3, 3)
 
-	value := *c.registerAddr(Rd) * *c.registerAddr(Rs)
-	*c.registerAddr(Rd) = value
+	value := c.R[Rd] * c.R[Rs]
+	c.R[Rd] = value
 }
 
 func (c *CPU) Thumb_BIC(instruction uint32) { // Rd = Rd AND NOT Rs
 	Rd := ReadBits(instruction, 0, 3)
 	Rs := ReadBits(instruction, 3, 3)
 
-	value := *c.registerAddr(Rd) & ^*c.registerAddr(Rs)
-	*c.registerAddr(Rd) = value
+	value := c.R[Rd] & ^c.R[Rs]
+	c.R[Rd] = value
 
 	c.Thumb_SetCPSRLogic(value)
 }
@@ -1223,46 +1260,24 @@ func (c *CPU) Thumb_MVN(instruction uint32) { // Rd = NOT Rs
 	Rd := ReadBits(instruction, 0, 3)
 	Rs := ReadBits(instruction, 3, 3)
 
-	value := ^*c.registerAddr(Rs)
-	*c.registerAddr(Rd) = value
+	value := ^c.R[Rs]
+	c.R[Rd] = value
 
 	c.Thumb_SetCPSRLogic(value)
 }
 
 func (c *CPU) Thumb_SetCPSRArithAdd(instruction uint32, left, right uint32, value uint64) {
-	c.cpsrSetN(ReadBits(uint32(value), 31, 1))
-
-	if uint32(value) == 0 {
-		c.cpsrSetZ(1)
-	} else {
-		c.cpsrSetZ(0)
-	}
-
-	if value >= 1<<32 {
-		c.cpsrSetC(1)
-	} else {
-		c.cpsrSetC(0)
-	}
-
-	c.cpsrSetV(^(left ^ right) & (left ^ uint32(value)) >> 31)
+	c.cpsrSetN(int32(value) < 0)
+	c.cpsrSetZ(uint32(value) == 0)
+	c.cpsrSetC(value >= 1<<32)
+	c.cpsrSetV(^(left^right)&(left^uint32(value))>>31 == 1)
 }
 
 func (c *CPU) Thumb_SetCPSRArithSub(instruction uint32, left, right uint32, value uint64) {
-	c.cpsrSetN(ReadBits(uint32(value), 31, 1))
-
-	if uint32(value) == 0 {
-		c.cpsrSetZ(1)
-	} else {
-		c.cpsrSetZ(0)
-	}
-
-	if value < 1<<32 {
-		c.cpsrSetC(1)
-	} else {
-		c.cpsrSetC(0)
-	}
-
-	c.cpsrSetV((left ^ right) & (left ^ uint32(value)) >> 31)
+	c.cpsrSetN(int32(value) < 0)
+	c.cpsrSetZ(uint32(value) == 0)
+	c.cpsrSetC(value < 1<<32)
+	c.cpsrSetV((left^right)&(left^uint32(value))>>31 == 1)
 }
 
 func (c *CPU) ThumbHiReg(instruction uint32) {
@@ -1278,18 +1293,18 @@ func (c *CPU) Thumb_ADDHi(instruction uint32) { // Rd = Rd+Rs
 	Rd := ReadBits(instruction, 0, 3) + ReadBits(instruction, 7, 1)<<3
 	Rs := ReadBits(instruction, 3, 3) + ReadBits(instruction, 6, 1)<<3
 
-	value := *c.registerAddr(Rd) + *c.registerAddr(Rs)
+	value := c.R[Rd] + c.R[Rs]
 	if Rd == 15 {
 		value += 4
 	}
-	*c.registerAddr(Rd) = value
+	c.R[Rd] = value
 }
 
 func (c *CPU) Thumb_CMPHi(instruction uint32) { // Void = Rd-Rs
 	Rd := ReadBits(instruction, 0, 3) + ReadBits(instruction, 7, 1)<<3
 	Rs := ReadBits(instruction, 3, 3) + ReadBits(instruction, 6, 1)<<3
 
-	value := *c.registerAddr(Rd) - *c.registerAddr(Rs)
+	value := c.R[Rd] - c.R[Rs]
 	if Rd == 15 {
 		value += 4
 	}
@@ -1304,11 +1319,11 @@ func (c *CPU) Thumb_MOVHi(instruction uint32) { // Rd = Rs
 	Rd := ReadBits(instruction, 0, 3) + ReadBits(instruction, 7, 1)<<3
 	Rs := ReadBits(instruction, 3, 3) + ReadBits(instruction, 6, 1)<<3
 
-	value := *c.registerAddr(Rs)
+	value := c.R[Rs]
 	if Rd == 15 {
 		value += 4
 	}
-	*c.registerAddr(Rd) = value
+	c.R[Rd] = value
 }
 
 func (c *CPU) ThumbBranchHi(instruction uint32) { // PC = Rs
@@ -1323,11 +1338,11 @@ func (c *CPU) ThumbBranchHi(instruction uint32) { // PC = Rs
 func (c *CPU) Thumb_BXHi(instruction uint32) {
 	Rs := ReadBits(instruction, 3, 3) + ReadBits(instruction, 6, 1)<<3
 
-	value := *c.registerAddr(Rs)
+	value := c.R[Rs]
 	T := ReadBits(value, 0, 1)
 	value &= ^T
 
-	c.R15 = value
+	c.R[15] = value
 
 	c.cpsrSetState(T)
 }
@@ -1335,24 +1350,19 @@ func (c *CPU) Thumb_BXHi(instruction uint32) {
 func (c *CPU) Thumb_BLXHi(instruction uint32) {
 	Rs := ReadBits(instruction, 3, 3) + ReadBits(instruction, 6, 1)<<3
 
-	value := *c.registerAddr(Rs)
+	value := c.R[Rs]
 	T := ReadBits(value, 0, 1)
 	value &= ^T
 
-	*c.registerAddr(14) = c.R15
-	c.R15 = value
+	c.R[14] = c.R[15]
+	c.R[15] = value
 
 	c.cpsrSetState(T)
 }
 
 func (c *CPU) Thumb_SetCPSRLogic(value uint32) {
-	c.cpsrSetN(ReadBits(value, 31, 1))
-
-	if value == 0 {
-		c.cpsrSetZ(1)
-	} else {
-		c.cpsrSetZ(0)
-	}
+	c.cpsrSetN(int32(value) < 0)
+	c.cpsrSetZ(uint32(value) == 0)
 }
 
 func (c *CPU) ThumbBranch(instruction uint32) {
@@ -1360,7 +1370,7 @@ func (c *CPU) ThumbBranch(instruction uint32) {
 		return
 	}
 
-	c.R15 += ReadBits(instruction, 0, 8) << 1
+	c.R[15] += ReadBits(instruction, 0, 8) << 1
 
 	c.prefetchFlush()
 }
@@ -1369,8 +1379,8 @@ func (c *CPU) ThumbMemoryPCRel(instruction uint32) {
 	Rd := ReadBits(instruction, 8, 3)
 	nn := ReadBits(instruction, 0, 8)
 
-	value := c.Memory.Access32(c.R15 + nn<<2)
-	*c.registerAddr(Rd) = value
+	value := c.Memory.Access32(c.R[15] + nn<<2)
+	c.R[Rd] = value
 }
 
 func (c *CPU) ThumbMemoryReg(instruction uint32) {
@@ -1387,8 +1397,8 @@ func (c *CPU) Thumb_STR(instruction uint32) {
 	Rb := ReadBits(instruction, 3, 3)
 	Ro := ReadBits(instruction, 6, 3)
 
-	value := *c.registerAddr(Rd)
-	c.Memory.Set32(*c.registerAddr(Rb)+*c.registerAddr(Ro), value)
+	value := c.R[Rd]
+	c.Memory.Set32(c.R[Rb]+c.R[Ro], value)
 }
 
 func (c *CPU) Thumb_STRB(instruction uint32) {
@@ -1396,8 +1406,8 @@ func (c *CPU) Thumb_STRB(instruction uint32) {
 	Rb := ReadBits(instruction, 3, 3)
 	Ro := ReadBits(instruction, 6, 3)
 
-	value := uint8(*c.registerAddr(Rd))
-	c.Memory.Set8(*c.registerAddr(Rb)+*c.registerAddr(Ro), value)
+	value := uint8(c.R[Rd])
+	c.Memory.Set8(c.R[Rb]+c.R[Ro], value)
 }
 
 func (c *CPU) Thumb_LDR(instruction uint32) {
@@ -1405,8 +1415,8 @@ func (c *CPU) Thumb_LDR(instruction uint32) {
 	Rb := ReadBits(instruction, 3, 3)
 	Ro := ReadBits(instruction, 6, 3)
 
-	value := c.Memory.Access32(*c.registerAddr(Rb) + *c.registerAddr(Ro))
-	*c.registerAddr(Rd) = value
+	value := c.Memory.Access32(c.R[Rb] + c.R[Ro])
+	c.R[Rd] = value
 }
 
 func (c *CPU) Thumb_LDRB(instruction uint32) {
@@ -1414,8 +1424,8 @@ func (c *CPU) Thumb_LDRB(instruction uint32) {
 	Rb := ReadBits(instruction, 3, 3)
 	Ro := ReadBits(instruction, 6, 3)
 
-	value := uint32(c.Memory.Access8(*c.registerAddr(Rb) + *c.registerAddr(Ro)))
-	*c.registerAddr(Rd) = value
+	value := uint32(c.Memory.Access8(c.R[Rb] + c.R[Ro]))
+	c.R[Rd] = value
 }
 
 func (c *CPU) ThumbMemoryImm(instruction uint32) {
