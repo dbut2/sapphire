@@ -1,6 +1,6 @@
 package gba
 
-func ArmLogicFlagger(left, right uint32, value uint64) (N, Z, C, V bool) {
+func FlagLogic(left, right uint32, value uint64) (N, Z, C, V bool) {
 	N = uint32(value)>>31 == 1
 	Z = uint32(value) == 0
 	C = false
@@ -9,7 +9,7 @@ func ArmLogicFlagger(left, right uint32, value uint64) (N, Z, C, V bool) {
 	return N, Z, C, V
 }
 
-func ArmArithAddFlagger(left, right uint32, value uint64) (N, Z, C, V bool) {
+func FlagArithAdd(left, right uint32, value uint64) (N, Z, C, V bool) {
 	N = uint32(value)>>31 == 1
 	Z = uint32(value) == 0
 	C = value > 0xFFFFFFFF
@@ -18,7 +18,7 @@ func ArmArithAddFlagger(left, right uint32, value uint64) (N, Z, C, V bool) {
 	return N, Z, C, V
 }
 
-func ArmArithSubFlagger(left, right uint32, value uint64) (N, Z, C, V bool) {
+func FlagArithSub(left, right uint32, value uint64) (N, Z, C, V bool) {
 	N = uint32(value)>>31 == 1
 	Z = uint32(value) == 0
 	C = value < 0x100000000
@@ -27,6 +27,6 @@ func ArmArithSubFlagger(left, right uint32, value uint64) (N, Z, C, V bool) {
 	return N, Z, C, V
 }
 
-func ArmArithReSubFlagger(left, right uint32, value uint64) (N, Z, C, V bool) {
-	return ArmArithSubFlagger(right, left, value)
+func FlagArithReSub(left, right uint32, value uint64) (N, Z, C, V bool) {
+	return FlagArithSub(right, left, value)
 }

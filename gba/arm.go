@@ -9,29 +9,36 @@ func (c *CPU) Arm(instruction uint32) {
 		return
 	}
 
+	do := ParseArm(c, instruction)
+	do(instruction)
+}
+
+func ParseArm(c *CPU, instruction uint32) func(instruction uint32) {
 	switch {
 	case instruction&0b0000_1111_1111_1111_1111_1111_0000_0000 == 0b0000_0001_0010_1111_1111_1111_0000_0000:
-		c.ArmBranchX(instruction)
+		return c.ArmBranchX
+	case instruction&0b0000_1111_0000_0000_0000_0000_0000_0000 == 0b0000_1111_0000_0000_0000_0000_0000_0000:
+		return c.ArmSWI
+	case instruction&0b0000_1101_1011_0000_1111_0000_0000_0000 == 0b0000_0001_0010_0000_1111_0000_0000_0000:
+		return c.ArmMSR
 	case instruction&0b0000_1100_0000_0000_0000_0000_0000_0000 == 0b0000_0000_0000_0000_0000_0000_0000_0000:
-		c.ArmALU(instruction)
+		return c.ArmALU
 	case instruction&0b0000_1110_0000_0000_0000_0000_0000_0000 == 0b0000_1010_0000_0000_0000_0000_0000_0000:
-		c.ArmBranch(instruction)
+		return c.ArmBranch
 	case instruction&0b0000_1100_0000_0000_0000_0000_0000_0000 == 0b0000_0100_0000_0000_0000_0000_0000_0000:
-		c.ArmMemory(instruction)
+		return c.ArmMemory
 	case instruction&0b0000_1110_0000_0000_0000_0000_0000_0000 == 0b0000_1000_0000_0000_0000_0000_0000_0000:
-		c.ArmMemoryBlock(instruction)
+		return c.ArmMemoryBlock
 	case instruction&0b0000_1111_0000_0000_0000_0000_0000_0000 == 0b0000_1110_0000_0000_0000_0000_0000_0000,
 		instruction&0b0000_1110_0000_0000_0000_0000_0000_0000 == 0b0000_1100_0000_0000_0000_0000_0000_0000,
 		instruction&0b0000_1111_1110_0000_0000_0000_0000_0000 == 0b0000_1100_0100_0000_0000_0000_0000_0000:
-		noins(instruction)
-	case instruction&0b0000_1111_0000_0000_0000_0000_0000_0000 == 0b0000_1111_0000_0000_0000_0000_0000_0000:
-		c.ArmSWI(instruction)
+		return noins
 	default:
-		noins(instruction)
+		return noins
 	}
 }
 
-func noins(instruction any) {
+func noins(instruction uint32) {
 	panic(fmt.Sprintf("nothing to do for: %0.32b", instruction))
 }
 
@@ -45,63 +52,63 @@ func (c *CPU) ArmALU(instruction uint32) {
 	switch Opcode {
 	case 0x0:
 		doOp = c.Arm_AND
-		flagger = ArmLogicFlagger
+		flagger = FlagLogic
 		logic = true
 	case 0x1:
 		doOp = c.Arm_EOR
-		flagger = ArmLogicFlagger
+		flagger = FlagLogic
 		logic = true
 	case 0x2:
 		doOp = c.Arm_SUB
-		flagger = ArmArithSubFlagger
+		flagger = FlagArithSub
 	case 0x3:
 		doOp = c.Arm_RSB
-		flagger = ArmArithReSubFlagger
+		flagger = FlagArithReSub
 	case 0x4:
 		doOp = c.Arm_ADD
-		flagger = ArmArithAddFlagger
+		flagger = FlagArithAdd
 	case 0x5:
 		doOp = c.Arm_ADC
-		flagger = ArmArithAddFlagger
+		flagger = FlagArithAdd
 	case 0x6:
 		doOp = c.Arm_SBC
-		flagger = ArmArithSubFlagger
+		flagger = FlagArithSub
 	case 0x7:
 		doOp = c.Arm_RSC
-		flagger = ArmArithReSubFlagger
+		flagger = FlagArithReSub
 	case 0x8:
 		doOp = c.Arm_TST
-		flagger = ArmLogicFlagger
+		flagger = FlagLogic
 		logic = true
 		void = true
 	case 0x9:
 		doOp = c.Arm_TEQ
-		flagger = ArmLogicFlagger
+		flagger = FlagLogic
 		logic = true
 		void = true
 	case 0xA:
 		doOp = c.Arm_CMP
-		flagger = ArmArithSubFlagger
+		flagger = FlagArithSub
 		void = true
 	case 0xB:
 		doOp = c.Arm_CMN
-		flagger = ArmArithAddFlagger
+		flagger = FlagArithAdd
 		void = true
 	case 0xC:
 		doOp = c.Arm_ORR
-		flagger = ArmLogicFlagger
+		flagger = FlagLogic
 		logic = true
 	case 0xD:
 		doOp = c.Arm_MOV
-		flagger = ArmLogicFlagger
+		flagger = FlagLogic
 		logic = true
 	case 0xE:
 		doOp = c.Arm_BIC
-		flagger = ArmLogicFlagger
+		flagger = FlagLogic
 		logic = true
 	case 0xF:
 		doOp = c.Arm_MVN
-		flagger = ArmLogicFlagger
+		flagger = FlagLogic
 		logic = true
 	default:
 		noins(instruction)
@@ -123,11 +130,11 @@ func (c *CPU) ArmALU(instruction uint32) {
 	N, Z, C, V := flagger(Rn, Op2, value)
 
 	switch {
-	case S == 1 && Rd != 15 && logic && !void:
+	case S == 1 && Rd != 15 && logic:
 		c.cpsrSetZ(Z)
 		c.cpsrSetN(N)
 		c.R[Rd] = uint32(value)
-	case S == 1 && Rd != 15 && !logic && !void:
+	case S == 1 && Rd != 15 && !logic:
 		c.cpsrSetV(V)
 		c.cpsrSetC(C)
 		c.cpsrSetZ(Z)
@@ -173,6 +180,7 @@ func (c *CPU) ArmALU(instruction uint32) {
 
 	//If S=0: Flags are not affected (not allowed for CMP,CMN,TEQ,TST).
 
+	return
 }
 
 func (c *CPU) Arm_AND(Rd, Rn, Op2, Cy uint32) (value uint64) { // Rd = Rn AND Op2
@@ -399,6 +407,10 @@ func (c *CPU) Arm_BLX(instruction uint32) {
 	value := SetBits(c.R[Rn], 0, 1, 1)
 	c.R[14] = c.R[15]
 	c.R[15] = value - 1
+}
+
+func (c *CPU) ArmMSR(instruction uint32) {
+	noins(instruction)
 }
 
 func (c *CPU) ArmMemory(instruction uint32) {

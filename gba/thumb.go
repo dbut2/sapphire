@@ -72,12 +72,14 @@ func (c *CPU) Thumb_ASR(instruction uint32) {
 func (c *CPU) ThumbAddSub(instruction uint32) {
 	map[uint32]func(uint32){
 		0: c.Thumb_ADD,
-		1: c.Thumb_ADD,
-	}[ReadBits(instruction, 10, 1)](instruction)
+		1: c.Thumb_SUB,
+		2: c.Thumb_ADD,
+		3: c.Thumb_SUB,
+	}[ReadBits(instruction, 9, 2)](instruction)
 }
 
 func (c *CPU) Thumb_ADD(instruction uint32) { // Rd=Rs+Rn / Rd=Rs+nn
-	imm := ReadBits(instruction, 9, 1)
+	imm := ReadBits(instruction, 10, 1)
 	Rd := ReadBits(instruction, 0, 3)
 	Rs := ReadBits(instruction, 3, 3)
 
@@ -90,27 +92,25 @@ func (c *CPU) Thumb_ADD(instruction uint32) { // Rd=Rs+Rn / Rd=Rs+nn
 		Rn := ReadBits(instruction, 6, 3)
 		op1 = c.R[Rs]
 		op2 = c.R[Rn]
-		value = uint64(op1) + uint64(op2)
 	case 1:
 		nn := ReadBits(instruction, 6, 3)
 		op1 = c.R[Rs]
 		op2 = nn
-		value = uint64(op1) + uint64(nn)
 	}
 
+	value = uint64(op1) + uint64(op2)
 	c.R[Rd] = uint32(value)
 
-	N, Z, C, V := ArmArithAddFlagger(op1, op2, value)
+	N, Z, C, V := FlagArithAdd(op1, op2, value)
 
 	c.cpsrSetN(N)
 	c.cpsrSetZ(Z)
 	c.cpsrSetC(C)
 	c.cpsrSetV(V)
-
 }
 
 func (c *CPU) Thumb_SUB(instruction uint32) { // Rd=Rs-Rn / Rd=Rs-nn
-	imm := ReadBits(instruction, 9, 1)
+	imm := ReadBits(instruction, 10, 1)
 	Rd := ReadBits(instruction, 0, 3)
 	Rs := ReadBits(instruction, 3, 3)
 
@@ -123,23 +123,21 @@ func (c *CPU) Thumb_SUB(instruction uint32) { // Rd=Rs-Rn / Rd=Rs-nn
 		Rn := ReadBits(instruction, 6, 3)
 		op1 = c.R[Rs]
 		op2 = c.R[Rn]
-		value = uint64(op1) - uint64(op2)
 	case 1:
 		nn := ReadBits(instruction, 6, 3)
 		op1 = c.R[Rs]
 		op2 = nn
-		value = uint64(op1) - uint64(nn)
 	}
 
+	value = uint64(op1) - uint64(op2)
 	c.R[Rd] = uint32(value)
 
-	N, Z, C, V := ArmArithSubFlagger(op1, op2, value)
+	N, Z, C, V := FlagArithSub(op1, op2, value)
 
 	c.cpsrSetN(N)
 	c.cpsrSetZ(Z)
 	c.cpsrSetC(C)
 	c.cpsrSetV(V)
-
 }
 
 func (c *CPU) ThumbImm(instruction uint32) {
@@ -155,9 +153,16 @@ func (c *CPU) Thumb_MOVImm(instruction uint32) { // Rd = nn
 	Rd := ReadBits(instruction, 8, 3)
 	nn := ReadBits(instruction, 0, 8)
 
-	value := nn
+	value := uint64(nn)
 
-	c.R[Rd] = value
+	c.R[Rd] = uint32(value)
+
+	N, Z, C, V := FlagLogic(c.R[Rd], nn, value)
+
+	c.cpsrSetN(N)
+	c.cpsrSetZ(Z)
+	c.cpsrSetC(C)
+	c.cpsrSetV(V)
 }
 
 func (c *CPU) Thumb_CMPImm(instruction uint32) { // Void = Rd - nn
@@ -450,11 +455,13 @@ func (c *CPU) Thumb_SetCPSRLogic(value uint32) {
 }
 
 func (c *CPU) ThumbBranch(instruction uint32) {
-	if !c.cond(ReadBits(instruction, 6, 4)) {
+	if !c.cond(ReadBits(instruction, 8, 4)) {
 		return
 	}
 
-	c.R[15] += ReadBits(instruction, 0, 8) << 1
+	offset := Signify(ReadBits(instruction, 0, 8), 8) << 1
+
+	c.R[15] = addInt(c.R[15], offset)
 
 	c.prefetchFlush()
 }
