@@ -1,9 +1,5 @@
 package gba
 
-import (
-	"fmt"
-)
-
 type CPU struct {
 	*Motherboard
 	CPURegisters
@@ -244,9 +240,9 @@ func (c *CPU) cpsrSetIRQDisable(value uint32) {
 	c.CPSR = SetBits(c.CPSR, 7, 1, value)
 }
 
-func (c *CPU) cpsrFIQDisable() uint32 {
-	return ReadBits(c.CPSR, 6, 1)
-}
+//func (c *CPU) cpsrFIQDisable() uint32 {
+//	return ReadBits(c.CPSR, 6, 1)
+//}
 
 func (c *CPU) cpsrSetFIQDisable(value uint32) {
 	c.CPSR = SetBits(c.CPSR, 6, 1, value)

@@ -81,7 +81,7 @@ func (c *CPU) Thumb_ADD(instruction uint32) { // Rd=Rs+Rn / Rd=Rs+nn
 	Rd := ReadBits(instruction, 0, 3)
 	Rs := ReadBits(instruction, 3, 3)
 
-	var value uint32
+	var value uint64
 	var op1 uint32
 	var op2 uint32
 
@@ -90,20 +90,22 @@ func (c *CPU) Thumb_ADD(instruction uint32) { // Rd=Rs+Rn / Rd=Rs+nn
 		Rn := ReadBits(instruction, 6, 3)
 		op1 = c.R[Rs]
 		op2 = c.R[Rn]
-		value = op1 + op2
+		value = uint64(op1) + uint64(op2)
 	case 1:
 		nn := ReadBits(instruction, 6, 3)
 		op1 = c.R[Rs]
 		op2 = nn
-		value = op1 + nn
+		value = uint64(op1) + uint64(nn)
 	}
 
-	c.R[Rd] = value
+	c.R[Rd] = uint32(value)
 
-	c.cpsrSetN(int32(value) < 0)
-	c.cpsrSetZ(value == 0)
-	c.cpsrSetC((value < op1) || (value < op2))
-	c.cpsrSetV((op1^op2 < 0) && (op1^value >= 0))
+	N, Z, C, V := ArmArithAddFlagger(op1, op2, value)
+
+	c.cpsrSetN(N)
+	c.cpsrSetZ(Z)
+	c.cpsrSetC(C)
+	c.cpsrSetV(V)
 
 }
 
@@ -112,7 +114,7 @@ func (c *CPU) Thumb_SUB(instruction uint32) { // Rd=Rs-Rn / Rd=Rs-nn
 	Rd := ReadBits(instruction, 0, 3)
 	Rs := ReadBits(instruction, 3, 3)
 
-	var value uint32
+	var value uint64
 	var op1 uint32
 	var op2 uint32
 
@@ -121,20 +123,22 @@ func (c *CPU) Thumb_SUB(instruction uint32) { // Rd=Rs-Rn / Rd=Rs-nn
 		Rn := ReadBits(instruction, 6, 3)
 		op1 = c.R[Rs]
 		op2 = c.R[Rn]
-		value = op1 - op2
+		value = uint64(op1) - uint64(op2)
 	case 1:
 		nn := ReadBits(instruction, 6, 3)
 		op1 = c.R[Rs]
 		op2 = nn
-		value = op1 - nn
+		value = uint64(op1) - uint64(nn)
 	}
 
-	c.R[Rd] = value
+	c.R[Rd] = uint32(value)
 
-	c.cpsrSetN(int32(value) < 0)
-	c.cpsrSetZ(value == 0)
-	c.cpsrSetC(op1 >= op2)
-	c.cpsrSetV((op1^op2 >= 0) && (op1^value < 0))
+	N, Z, C, V := ArmArithSubFlagger(op1, op2, value)
+
+	c.cpsrSetN(N)
+	c.cpsrSetZ(Z)
+	c.cpsrSetC(C)
+	c.cpsrSetV(V)
 
 }
 

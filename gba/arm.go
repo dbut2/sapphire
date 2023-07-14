@@ -36,217 +36,228 @@ func noins(instruction any) {
 }
 
 func (c *CPU) ArmALU(instruction uint32) {
-	map[uint32]func(uint32){
-		0x0: c.Arm_AND,
-		0x1: c.Arm_EOR,
-		0x2: c.Arm_SUB,
-		0x3: c.Arm_RSB,
-		0x4: c.Arm_ADD,
-		0x5: c.Arm_ADC,
-		0x6: c.Arm_SBC,
-		0x7: c.Arm_RSC,
-		0x8: c.Arm_TST,
-		0x9: c.Arm_TEQ,
-		0xA: c.Arm_CMP,
-		0xB: c.Arm_CMN,
-		0xC: c.Arm_ORR,
-		0xD: c.Arm_MOV,
-		0xE: c.Arm_BIC,
-		0xF: c.Arm_MVN,
-	}[ReadBits(instruction, 21, 4)](instruction)
-}
+	Opcode := ReadBits(instruction, 21, 4)
 
-func (c *CPU) Arm_AND(instruction uint32) { // Rd = Rn AND Op2
-	Rn := c.Arm_Rn(instruction)
+	var doOp func(Rd, Rn, Op2, Cy uint32) (value uint64)
+	var flagger func(left, right uint32, value uint64) (N, Z, C, V bool)
+	logic := false
+	void := false
+	switch Opcode {
+	case 0x0:
+		doOp = c.Arm_AND
+		flagger = ArmLogicFlagger
+		logic = true
+	case 0x1:
+		doOp = c.Arm_EOR
+		flagger = ArmLogicFlagger
+		logic = true
+	case 0x2:
+		doOp = c.Arm_SUB
+		flagger = ArmArithSubFlagger
+	case 0x3:
+		doOp = c.Arm_RSB
+		flagger = ArmArithReSubFlagger
+	case 0x4:
+		doOp = c.Arm_ADD
+		flagger = ArmArithAddFlagger
+	case 0x5:
+		doOp = c.Arm_ADC
+		flagger = ArmArithAddFlagger
+	case 0x6:
+		doOp = c.Arm_SBC
+		flagger = ArmArithSubFlagger
+	case 0x7:
+		doOp = c.Arm_RSC
+		flagger = ArmArithReSubFlagger
+	case 0x8:
+		doOp = c.Arm_TST
+		flagger = ArmLogicFlagger
+		logic = true
+		void = true
+	case 0x9:
+		doOp = c.Arm_TEQ
+		flagger = ArmLogicFlagger
+		logic = true
+		void = true
+	case 0xA:
+		doOp = c.Arm_CMP
+		flagger = ArmArithSubFlagger
+		void = true
+	case 0xB:
+		doOp = c.Arm_CMN
+		flagger = ArmArithAddFlagger
+		void = true
+	case 0xC:
+		doOp = c.Arm_ORR
+		flagger = ArmLogicFlagger
+		logic = true
+	case 0xD:
+		doOp = c.Arm_MOV
+		flagger = ArmLogicFlagger
+		logic = true
+	case 0xE:
+		doOp = c.Arm_BIC
+		flagger = ArmLogicFlagger
+		logic = true
+	case 0xF:
+		doOp = c.Arm_MVN
+		flagger = ArmLogicFlagger
+		logic = true
+	default:
+		noins(instruction)
+	}
+
 	Rd := ReadBits(instruction, 12, 4)
+	Rn := c.Arm_Rn(instruction)
 	Op2 := c.Arm_Op2(instruction)
-
-	value := Rn & Op2
-	c.R[Rd] = value
-
-	c.Arm_SetCPSRLogic(instruction, value)
-}
-
-func (c *CPU) Arm_EOR(instruction uint32) { // Rd = Rn XOR Op2
-	Rn := c.Arm_Rn(instruction)
-	Rd := ReadBits(instruction, 12, 4)
-	Op2 := c.Arm_Op2(instruction)
-
-	value := Rn ^ Op2
-	c.R[Rd] = value
-
-	c.Arm_SetCPSRLogic(instruction, value)
-}
-
-func (c *CPU) Arm_SUB(instruction uint32) { // Rd = Rn-Op2
-	Rn := c.Arm_Rn(instruction)
-	Rd := ReadBits(instruction, 12, 4)
-	Op2 := c.Arm_Op2(instruction)
-
-	value := uint64(Rn) - uint64(Op2)
-	c.R[Rd] = uint32(value)
-
-	c.Arm_SetCPSRArithSub(instruction, Rn, Op2, value)
-}
-
-func (c *CPU) Arm_RSB(instruction uint32) { // Rd = Op2-Rn
-	Rn := c.Arm_Rn(instruction)
-	Rd := ReadBits(instruction, 12, 4)
-	Op2 := c.Arm_Op2(instruction)
-
-	value := uint64(Op2) - uint64(Rn)
-	c.R[Rd] = uint32(value)
-
-	c.Arm_SetCPSRArithSub(instruction, Op2, Rn, value)
-}
-
-func (c *CPU) Arm_ADD(instruction uint32) { // Rd = Rn+Op2
-	Rn := c.Arm_Rn(instruction)
-	Rd := ReadBits(instruction, 12, 4)
-	Op2 := c.Arm_Op2(instruction)
-
-	value := uint64(Rn) + uint64(Op2)
-	c.R[Rd] = uint32(value)
-
-	c.Arm_SetCPSRArithAdd(instruction, Rn, Op2, value)
-}
-
-func (c *CPU) Arm_ADC(instruction uint32) { // Rd = Rn+Op2+Cy
-	Rn := c.Arm_Rn(instruction)
-	Rd := ReadBits(instruction, 12, 4)
 	Cy := ReadBits(c.CPSR, 29, 1)
-	Op2 := c.Arm_Op2(instruction)
 
-	value := uint64(Rn) + uint64(Op2) + uint64(Cy)
-	c.R[Rd] = uint32(value)
+	S := ReadBits(instruction, 20, 1)
 
-	c.Arm_SetCPSRArithAdd(instruction, Rn, Op2, value)
+	value := doOp(Rd, Rn, Op2, Cy)
+
+	if !void {
+		c.R[Rd] = uint32(value)
+	}
+
+	N, Z, C, V := flagger(Rn, Op2, value)
+
+	switch {
+	case S == 1 && Rd != 15 && logic && !void:
+		c.cpsrSetZ(Z)
+		c.cpsrSetN(N)
+		c.R[Rd] = uint32(value)
+	case S == 1 && Rd != 15 && !logic && !void:
+		c.cpsrSetV(V)
+		c.cpsrSetC(C)
+		c.cpsrSetZ(Z)
+		c.cpsrSetN(N)
+		c.R[Rd] = uint32(value)
+	case S == 1 && Rd == 15 && void:
+		c.R[15] = uint32(value)
+		c.cpsrSetZ(Z)
+		c.cpsrSetN(N)
+		c.cpsrSetC(C)
+		c.cpsrSetV(V)
+
+		//if c.cpsrMode() != USR {
+		//	c.cpsrSetI(I)
+		//	c.cpsrSetF(F)
+		//	c.cpsrSetM1(M1)
+		//	c.cpsrSetM0(M0)
+		//}
+
+		cond1 := c.cpsrIRQDisable() == 0
+		cond2 := ReadIORegister(c.Memory, IME) > 0
+		cond3 := ReadIORegister(c.Memory, IE)&ReadIORegister(c.Memory, IF) > 0
+		if cond1 && cond2 && cond3 {
+			c.exception(0x18)
+		}
+	case S == 1 && Rd == 15:
+		c.CPSR = c.SPSR
+		c.R[15] = uint32(value)
+	case S == 0:
+	}
+
+	//Using R15 (PC)
+	//When using R15 as Destination (Rd), note below CPSR description and Execution time description.
+
+	//Returned CPSR Flags
+	//If S=1, Rd<>R15, logical operations (AND,EOR,TST,TEQ,ORR,MOV,BIC,MVN):
+
+	//If S=1, Rd<>R15, arithmetic operations (SUB,RSB,ADD,ADC,SBC,RSC,CMP,CMN):
+
+	//IF S=1, with unused Rd bits=1111b, {P} opcodes (CMPP/CMNP/TSTP/TEQP):
+
+	//If S=1, Rd=R15; should not be used in user mode:
+
+	//If S=0: Flags are not affected (not allowed for CMP,CMN,TEQ,TST).
+
 }
 
-func (c *CPU) Arm_SBC(instruction uint32) { // Rd = Rn-Op2+Cy-1
-	Rn := c.Arm_Rn(instruction)
-	Rd := ReadBits(instruction, 12, 4)
-	Cy := ReadBits(c.CPSR, 29, 1)
-	Op2 := c.Arm_Op2(instruction)
-
-	value := uint64(Rn) - uint64(Op2) + uint64(Cy) - 1
-	c.R[Rd] = uint32(value)
-
-	c.Arm_SetCPSRArithSub(instruction, Rn, Op2, value)
+func (c *CPU) Arm_AND(Rd, Rn, Op2, Cy uint32) (value uint64) { // Rd = Rn AND Op2
+	return uint64(Rn & Op2)
 }
 
-func (c *CPU) Arm_RSC(instruction uint32) { // Rd = Op2-Rn+Cy-1
-	Rn := c.Arm_Rn(instruction)
-	Rd := ReadBits(instruction, 12, 4)
-	Cy := ReadBits(c.CPSR, 29, 1)
-	Op2 := c.Arm_Op2(instruction)
-
-	value := uint64(Op2) - uint64(Rn) + uint64(Cy) - 1
-	c.R[Rd] = uint32(value)
-
-	c.Arm_SetCPSRArithSub(instruction, Op2, Rn, value)
+func (c *CPU) Arm_EOR(Rd, Rn, Op2, Cy uint32) (value uint64) { // Rd = Rn XOR Op2
+	return uint64(Rn ^ Op2)
 }
 
-func (c *CPU) Arm_TST(instruction uint32) { // Void = Rn AND Op2
-	Rn := c.Arm_Rn(instruction)
-	Op2 := c.Arm_Op2(instruction)
-
-	value := Rn & Op2
-
-	c.Arm_SetCPSRLogic(instruction, value)
+func (c *CPU) Arm_SUB(Rd, Rn, Op2, Cy uint32) (value uint64) { // Rd = Rn-Op2
+	return uint64(Rn) - uint64(Op2)
 }
 
-func (c *CPU) Arm_TEQ(instruction uint32) { // Void = Rn XOR Op2
-	Rn := c.Arm_Rn(instruction)
-	Op2 := c.Arm_Op2(instruction)
-
-	value := Rn ^ Op2
-
-	c.Arm_SetCPSRLogic(instruction, value)
+func (c *CPU) Arm_RSB(Rd, Rn, Op2, Cy uint32) (value uint64) { // Rd = Op2-Rn
+	return uint64(Op2) - uint64(Rn)
 }
 
-func (c *CPU) Arm_CMP(instruction uint32) { // Void = Rn-Op2
-	Rn := c.Arm_Rn(instruction)
-	Op2 := c.Arm_Op2(instruction)
-
-	value := uint64(Rn) - uint64(Op2)
-
-	c.Arm_SetCPSRArithSub(instruction, Rn, Op2, value)
+func (c *CPU) Arm_ADD(Rd, Rn, Op2, Cy uint32) (value uint64) { // Rd = Rn+Op2
+	return uint64(Rn) + uint64(Op2)
 }
 
-func (c *CPU) Arm_CMN(instruction uint32) { // Void = Rn+Op2
-	Rn := c.Arm_Rn(instruction)
-	Op2 := c.Arm_Op2(instruction)
-
-	value := uint64(Rn) + uint64(Op2)
-
-	c.Arm_SetCPSRArithAdd(instruction, Rn, Op2, value)
+func (c *CPU) Arm_ADC(Rd, Rn, Op2, Cy uint32) (value uint64) { // Rd = Rn+Op2+Cy
+	return uint64(Rn) + uint64(Op2) + uint64(Cy)
 }
 
-func (c *CPU) Arm_ORR(instruction uint32) { // Rd = Rn OR Op2
-	Rn := c.Arm_Rn(instruction)
-	Rd := ReadBits(instruction, 12, 4)
-	Op2 := c.Arm_Op2(instruction)
-
-	value := Rn | Op2
-	c.R[Rd] = value
-
-	c.Arm_SetCPSRLogic(instruction, value)
+func (c *CPU) Arm_SBC(Rd, Rn, Op2, Cy uint32) (value uint64) { // Rd = Rn-Op2+Cy-1
+	return uint64(Rn) - uint64(Op2) + uint64(Cy) - 1
 }
 
-func (c *CPU) Arm_MOV(instruction uint32) { // Rd = Op2
-	Rd := ReadBits(instruction, 12, 4)
-	Op2 := c.Arm_Op2(instruction)
-
-	value := Op2
-	c.R[Rd] = value
-
-	c.Arm_SetCPSRLogic(instruction, value)
+func (c *CPU) Arm_RSC(Rd, Rn, Op2, Cy uint32) (value uint64) { // Rd = Op2-Rn+Cy-1
+	return uint64(Op2) - uint64(Rn) + uint64(Cy) - 1
 }
 
-func (c *CPU) Arm_BIC(instruction uint32) { // Rd = Rn AND NOT Op2
-	Rn := c.Arm_Rn(instruction)
-	Rd := ReadBits(instruction, 12, 4)
-	Op2 := c.Arm_Op2(instruction)
-
-	value := Rn & ^Op2
-	c.R[Rd] = value
-
-	c.Arm_SetCPSRLogic(instruction, value)
+func (c *CPU) Arm_TST(Rd, Rn, Op2, Cy uint32) (value uint64) { // Void = Rn AND Op2
+	return uint64(Rn & Op2)
 }
 
-func (c *CPU) Arm_MVN(instruction uint32) { // Rd = NOT Op2
-	Rd := ReadBits(instruction, 12, 4)
-	Op2 := c.Arm_Op2(instruction)
+func (c *CPU) Arm_TEQ(Rd, Rn, Op2, Cy uint32) (value uint64) { // Void = Rn XOR Op2
+	return uint64(Rn ^ Op2)
+}
 
-	value := ^Op2
-	c.R[Rd] = value
+func (c *CPU) Arm_CMP(Rd, Rn, Op2, Cy uint32) (value uint64) { // Void = Rn-Op2
+	return uint64(Rn) - uint64(Op2)
+}
 
-	c.Arm_SetCPSRLogic(instruction, value)
+func (c *CPU) Arm_CMN(Rd, Rn, Op2, Cy uint32) (value uint64) { // Void = Rn+Op2
+	return uint64(Rn) + uint64(Op2)
+}
+
+func (c *CPU) Arm_ORR(Rd, Rn, Op2, Cy uint32) (value uint64) { // Rd = Rn OR Op2
+	return uint64(Rn | Op2)
+}
+
+func (c *CPU) Arm_MOV(Rd, Rn, Op2, Cy uint32) (value uint64) { // Rd = Op2
+	return uint64(Op2)
+}
+
+func (c *CPU) Arm_BIC(Rd, Rn, Op2, Cy uint32) (value uint64) { // Rd = Rn AND NOT Op2
+	return uint64(Rn & ^Op2)
+}
+
+func (c *CPU) Arm_MVN(Rd, Rn, Op2, Cy uint32) (value uint64) { // Rd = NOT Op2
+	return uint64(^Op2)
 }
 
 func (c *CPU) Arm_Rn(instruction uint32) uint32 {
 	Rn := ReadBits(instruction, 16, 4)
-	if Rn == 15 {
+	return c.Arm_Rx(instruction, Rn)
+}
+
+func (c *CPU) Arm_Rx(instruction uint32, Rx uint32) uint32 {
+	if Rx == 15 {
 		I := ReadBits(instruction, 25, 1)
 		R := ReadBits(instruction, 4, 1)
 		if I == 0 && R == 1 {
-			return c.R[Rn] + 4
+			return c.R[Rx] + 4
 		}
 	}
-	return c.R[Rn]
+	return c.R[Rx]
 }
 
 func (c *CPU) Arm_Rm(instruction uint32) uint32 {
 	Rm := ReadBits(instruction, 0, 4)
-	if Rm == 15 {
-		I := ReadBits(instruction, 25, 1)
-		R := ReadBits(instruction, 4, 1)
-		if I == 0 && R == 1 {
-			return c.R[Rm] + 4
-		}
-	}
-	return c.R[Rm]
+	return c.Arm_Rx(instruction, Rm)
 }
 
 func (c *CPU) Arm_Op2(instruction uint32) uint32 {
@@ -343,40 +354,6 @@ func Shift(shiftType uint32, value, amount uint32) (uint32, bool) {
 		return ShiftROR(value, amount)
 	default:
 		panic(fmt.Sprintf("bad shift: %d", shiftType))
-	}
-}
-
-func (c *CPU) Arm_SetCPSRLogic(instruction uint32, result uint32) {
-	S := ReadBits(instruction, 20, 1)
-	if S == 1 {
-		c.cpsrSetN(int32(result) < 0)
-		c.cpsrSetZ(result == 0)
-	}
-}
-
-func (c *CPU) Arm_SetCPSRArithAdd(instruction uint32, left, right uint32, result uint64) {
-	S := ReadBits(instruction, 20, 1)
-	if S == 1 {
-		carry := result > 0xFFFFFFFF
-		overflow := int64(int32(left))+int64(int32(right)) != int64(int32(result))
-
-		c.cpsrSetN(int32(result) < 0)
-		c.cpsrSetZ(result == 0)
-		c.cpsrSetC(carry)
-		c.cpsrSetV(overflow)
-	}
-}
-
-func (c *CPU) Arm_SetCPSRArithSub(instruction uint32, left, right uint32, result uint64) {
-	S := ReadBits(instruction, 20, 1)
-	if S == 1 {
-		borrow := result > uint64(left)                                            // borrow is true if there was an unsigned underflow
-		overflow := int64(int32(left))-int64(int32(right)) != int64(int32(result)) // overflow is true if there was a signed underflow
-
-		c.cpsrSetN(int32(result) < 0)
-		c.cpsrSetZ(result == 0)
-		c.cpsrSetC(!borrow)
-		c.cpsrSetV(overflow)
 	}
 }
 
