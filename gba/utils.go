@@ -1,5 +1,9 @@
 package gba
 
+import (
+	"fmt"
+)
+
 func FlagLogic(left, right uint32, value uint64) (N, Z, C, V bool) {
 	N = uint32(value)>>31 == 1
 	Z = uint32(value) == 0
@@ -29,4 +33,58 @@ func FlagArithSub(left, right uint32, value uint64) (N, Z, C, V bool) {
 
 func FlagArithReSub(left, right uint32, value uint64) (N, Z, C, V bool) {
 	return FlagArithSub(right, left, value)
+}
+
+const (
+	LSL uint32 = iota
+	LSR
+	ASR
+	ROR
+)
+
+func Shift(shiftType uint32, value, amount uint32) (uint32, bool) {
+	switch shiftType {
+	case LSL:
+		return ShiftLSR(value, amount)
+	case LSR:
+		return ShiftLSR(value, amount)
+	case ASR:
+		return ShiftASR(value, amount)
+	case ROR:
+		return ShiftROR(value, amount)
+	default:
+		panic(fmt.Sprintf("bad shift: %d", shiftType))
+	}
+}
+
+func ShiftLSL(value, amount uint32) (uint32, bool) {
+	return value << amount, value&(1<<(32-amount)) > 0
+}
+
+func ShiftLSR(value, amount uint32) (uint32, bool) {
+	return value >> amount, value&(1<<(amount-1)) > 0
+}
+
+func ShiftASR(value, amount uint32) (uint32, bool) {
+	s := value & (1 << 31)
+	for i := uint32(0); i < amount; i++ {
+		value = (value >> 1) | s
+	}
+	return value, value&(1<<(amount-1)) > 0
+}
+
+func ShiftROR(value, amount uint32) (uint32, bool) {
+	return value>>(amount%32) | value<<(32-(amount%32)), (value>>(amount-1))&1 > 0
+}
+
+func addInt(a uint32, b int32) uint32 {
+	if b < 0 {
+		return a - uint32(-b)
+	}
+	return a + uint32(b)
+}
+
+func signify(value uint32, size uint32) int32 {
+	shiftValue := 32 - size
+	return int32(value<<shiftValue) >> shiftValue
 }

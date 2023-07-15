@@ -26,6 +26,8 @@ func (c *CPU) Thumb(instruction uint32) {
 		c.ThumbImm(instruction)
 	case instruction&0b1111_0000_0000_0000 == 0b1101_0000_0000_0000:
 		c.ThumbBranch(instruction)
+	case instruction&0b1111_1000_0000_0000 == 0b1110_0000_0000_0000:
+		c.ThumbBranch2(instruction)
 	default:
 		noins(instruction)
 	}
@@ -371,10 +373,10 @@ func (c *CPU) Thumb_SetCPSRArithSub(instruction uint32, left, right uint32, valu
 
 func (c *CPU) ThumbHiReg(instruction uint32) {
 	map[uint32]func(uint32){
-		0x0: c.Thumb_ADDHi,
-		0x1: c.Thumb_CMPHi,
-		0x2: c.Thumb_MOVHi,
-		0x3: c.ThumbBranchHi,
+		0b00: c.Thumb_ADDHi,
+		0b01: c.Thumb_CMPHi,
+		0b10: c.Thumb_MOVHi,
+		0b11: c.ThumbBranchHi,
 	}[ReadBits(instruction, 8, 2)](instruction)
 }
 
@@ -459,10 +461,14 @@ func (c *CPU) ThumbBranch(instruction uint32) {
 		return
 	}
 
-	offset := Signify(ReadBits(instruction, 0, 8), 8) << 1
-
+	offset := signify(ReadBits(instruction, 0, 8), 8) << 1
 	c.R[15] = addInt(c.R[15], offset)
+	c.prefetchFlush()
+}
 
+func (c *CPU) ThumbBranch2(instruction uint32) {
+	offset := signify(ReadBits(instruction, 0, 11), 1) << 1
+	c.R[15] = addInt(c.R[15], offset)
 	c.prefetchFlush()
 }
 

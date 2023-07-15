@@ -12,6 +12,9 @@ import (
 	"github.com/dbut2/sapphire/gba"
 )
 
+//go:embed sapphire.gba
+var gamepak []byte
+
 func main() {
 	a := app.New()
 	w := a.NewWindow("Sapphire")
@@ -26,7 +29,6 @@ func main() {
 	fps := 30
 	ticker := time.NewTicker(time.Second / time.Duration(fps))
 
-	var gamepak []byte
 	emu := gba.NewEmu(gamepak)
 
 	setup := testSetup3

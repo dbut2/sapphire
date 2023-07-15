@@ -1,10 +1,15 @@
 package gba
 
+import (
+	"fmt"
+)
+
 type CPU struct {
 	*Motherboard
 	CPURegisters
-	pipeline [2]uint32
-	flushed  bool
+
+	curr, next uint32
+	flushed    bool
 }
 
 func NewCPU(m *Motherboard) *CPU {
@@ -19,18 +24,21 @@ func (c *CPU) Boot() {
 	c.cpsrInitMode(SYS)
 	c.prefetchFlush()
 
+	SetIORegister(c.Memory, DISPCNT, 0x80)
+	c.ArmSWI(0)
+
 	c.Run()
 }
 
 func (c *CPU) Run() {
 	for {
-		instruction := c.pipeline[0]
+		instruction := c.curr
 
 		c.Step(instruction)
 
 		if !c.flushed {
-			c.pipeline[0] = c.pipeline[1]
-			c.pipeline[1] = c.R[15]
+			c.curr = c.next
+			c.next = c.R[15]
 
 			c.pcInc()
 		}
@@ -58,10 +66,14 @@ func (c *CPU) Step(curr uint32) {
 	}
 }
 
+func noins(instruction uint32) {
+	panic(fmt.Sprintf("nothing to do for: %0.32b", instruction))
+}
+
 func (c *CPU) prefetchFlush() {
-	c.pipeline[0] = c.R[15]
+	c.curr = c.R[15]
 	c.pcInc()
-	c.pipeline[1] = c.R[15]
+	c.next = c.R[15]
 	c.pcInc()
 	c.flushed = true
 }
@@ -111,7 +123,7 @@ type CPURegisters struct {
 	SPSR_und uint32
 }
 
-func (c *CPU) registerAddr(r uint32) *uint32 {
+func (c *CPU) registerAddr(mode uint32, r uint32) *uint32 {
 	return map[uint32]*uint32{
 		0: &c.R0,
 		1: &c.R1,
@@ -129,7 +141,7 @@ func (c *CPU) registerAddr(r uint32) *uint32 {
 			0x17: &c.R8,
 			0x1B: &c.R8,
 			0x1F: &c.R8,
-		}[c.cpsrMode()],
+		}[mode],
 		9: map[uint32]*uint32{
 			0x10: &c.R9,
 			0x11: &c.R9_fiq,
@@ -138,7 +150,7 @@ func (c *CPU) registerAddr(r uint32) *uint32 {
 			0x17: &c.R9,
 			0x1B: &c.R9,
 			0x1F: &c.R9,
-		}[c.cpsrMode()],
+		}[mode],
 		10: map[uint32]*uint32{
 			0x10: &c.R10,
 			0x11: &c.R10_fiq,
@@ -147,7 +159,7 @@ func (c *CPU) registerAddr(r uint32) *uint32 {
 			0x17: &c.R10,
 			0x1B: &c.R10,
 			0x1F: &c.R10,
-		}[c.cpsrMode()],
+		}[mode],
 		11: map[uint32]*uint32{
 			0x10: &c.R11,
 			0x11: &c.R11_fiq,
@@ -156,7 +168,7 @@ func (c *CPU) registerAddr(r uint32) *uint32 {
 			0x17: &c.R11,
 			0x1B: &c.R11,
 			0x1F: &c.R11,
-		}[c.cpsrMode()],
+		}[mode],
 		12: map[uint32]*uint32{
 			0x10: &c.R12,
 			0x11: &c.R12_fiq,
@@ -165,7 +177,7 @@ func (c *CPU) registerAddr(r uint32) *uint32 {
 			0x17: &c.R12,
 			0x1B: &c.R12,
 			0x1F: &c.R12,
-		}[c.cpsrMode()],
+		}[mode],
 		13: map[uint32]*uint32{
 			0x10: &c.R13,
 			0x11: &c.R13_fiq,
@@ -174,7 +186,7 @@ func (c *CPU) registerAddr(r uint32) *uint32 {
 			0x17: &c.R13_abt,
 			0x1B: &c.R13_und,
 			0x1F: &c.R13,
-		}[c.cpsrMode()],
+		}[mode],
 		14: map[uint32]*uint32{
 			0x10: &c.R14,
 			0x11: &c.R14_fiq,
@@ -183,20 +195,30 @@ func (c *CPU) registerAddr(r uint32) *uint32 {
 			0x17: &c.R14_abt,
 			0x1B: &c.R14_und,
 			0x1F: &c.R14,
-		}[c.cpsrMode()],
+		}[mode],
 		15: &c.R15,
 	}[r]
 }
 
-func (c *CPU) spsrAddr() *uint32 {
+func (c *CPU) spsrAddr(mode uint32) *uint32 {
 	return map[uint32]*uint32{
 		0x11: &c.SPSR_fiq,
 		0x12: &c.SPSR_irq,
 		0x13: &c.SPSR_svc,
 		0x17: &c.SPSR_abt,
 		0x1B: &c.SPSR_und,
-	}[c.cpsrMode()]
+	}[mode]
 }
+
+const (
+	USR uint32 = 0b10000
+	FIQ uint32 = 0b10001
+	IRQ uint32 = 0b10010
+	SVC uint32 = 0b10011
+	ABT uint32 = 0b10111
+	UND uint32 = 0b11011
+	SYS uint32 = 0b11111
+)
 
 func (c *CPU) cpsrMode() uint32 {
 	return ReadBits(c.CPSR, 0, 5)
@@ -207,21 +229,28 @@ func (c *CPU) cpsrInitMode(value uint32) {
 }
 
 func (c *CPU) cpsrSetMode(value uint32) {
-	for i := uint32(0); i <= 15; i++ {
-		*c.registerAddr(i) = c.R[i]
+	prevMode := c.cpsrMode()
+	nextMode := value
+
+	wasPrivileged := prevMode != USR && prevMode != SYS
+	nowPrivileged := nextMode != USR && nextMode != SYS
+
+	if wasPrivileged {
+		*c.spsrAddr(prevMode) = c.SPSR
 	}
-	if c.cpsrMode() != 0x10 && c.cpsrMode() != 0x1F {
-		*c.spsrAddr() = c.SPSR
+	if nowPrivileged {
+		c.SPSR = *c.spsrAddr(nextMode)
+	}
+	if nowPrivileged && !wasPrivileged {
+		c.SPSR = c.CPSR
+	}
+
+	for i := uint32(0); i <= 15; i++ {
+		*c.registerAddr(prevMode, i) = c.R[i]
+		c.R[i] = *c.registerAddr(nextMode, i)
 	}
 
 	c.CPSR = SetBits(c.CPSR, 0, 5, value)
-
-	for i := uint32(0); i <= 15; i++ {
-		c.R[i] = *c.registerAddr(i)
-	}
-	if c.cpsrMode() != 0x10 && c.cpsrMode() != 0x1F {
-		c.SPSR = *c.spsrAddr()
-	}
 }
 
 func (c *CPU) cpsrState() uint32 {
@@ -284,16 +313,6 @@ func (c *CPU) cpsrSetV(value bool) {
 	c.CPSR = SetBits(c.CPSR, 28, 1, v)
 }
 
-const (
-	USR uint32 = 0x10
-	FIQ uint32 = 0x11
-	IRQ uint32 = 0x12
-	SVC uint32 = 0x13
-	ABT uint32 = 0x17
-	UND uint32 = 0x1B
-	SYS uint32 = 0x1F
-)
-
 func (c *CPU) exception(vector uint32) {
 	switch vector {
 	case 0x00: // reset
@@ -326,33 +345,6 @@ func (c *CPU) exception(vector uint32) {
 
 	c.R[15] = vector
 }
-
-func ShiftLSL(value, amount uint32) (uint32, bool) {
-	return value << amount, value&(1<<(32-amount)) > 0
-}
-
-func ShiftLSR(value, amount uint32) (uint32, bool) {
-	return value >> amount, value&(1<<(amount-1)) > 0
-}
-
-func ShiftASR(value, amount uint32) (uint32, bool) {
-	s := value & 0x8000_0000
-	for i := uint32(0); i < amount; i++ {
-		value = (value >> 1) | s
-	}
-	return value, value&(1<<(amount-1)) > 0
-}
-
-func ShiftROR(value, amount uint32) (uint32, bool) {
-	return value>>(amount%32) | value<<(32-(amount%32)), (value>>(amount-1))&1 > 0
-}
-
-const (
-	LSL uint32 = iota
-	LSR
-	ASR
-	ROR
-)
 
 func (c *CPU) cond(cond uint32) bool {
 	N := c.cpsrN()
@@ -394,16 +386,4 @@ func (c *CPU) cond(cond uint32) bool {
 	default:
 		return false
 	}
-}
-
-func addInt(a uint32, b int32) uint32 {
-	if b < 0 {
-		return a - uint32(-b)
-	}
-	return a + uint32(b)
-}
-
-func Signify(value uint32, size uint32) int32 {
-	shiftValue := 32 - size
-	return int32(value<<shiftValue) >> shiftValue
 }

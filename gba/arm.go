@@ -19,8 +19,8 @@ func ParseArm(c *CPU, instruction uint32) func(instruction uint32) {
 		return c.ArmBranchX
 	case instruction&0b0000_1111_0000_0000_0000_0000_0000_0000 == 0b0000_1111_0000_0000_0000_0000_0000_0000:
 		return c.ArmSWI
-	case instruction&0b0000_1101_1011_0000_1111_0000_0000_0000 == 0b0000_0001_0010_0000_1111_0000_0000_0000:
-		return c.ArmMSR
+	case instruction&0b0000_1101_1001_0000_0000_0000_0000_0000 == 0b0000_0001_0000_0000_0000_0000_0000_0000:
+		return c.ArmPSR
 	case instruction&0b0000_1100_0000_0000_0000_0000_0000_0000 == 0b0000_0000_0000_0000_0000_0000_0000_0000:
 		return c.ArmALU
 	case instruction&0b0000_1110_0000_0000_0000_0000_0000_0000 == 0b0000_1010_0000_0000_0000_0000_0000_0000:
@@ -38,76 +38,73 @@ func ParseArm(c *CPU, instruction uint32) func(instruction uint32) {
 	}
 }
 
-func noins(instruction uint32) {
-	panic(fmt.Sprintf("nothing to do for: %0.32b", instruction))
-}
-
 func (c *CPU) ArmALU(instruction uint32) {
 	Opcode := ReadBits(instruction, 21, 4)
 
-	var doOp func(Rd, Rn, Op2, Cy uint32) (value uint64)
+	var doOp func(Rn, Op2, Cy uint32) (value uint64)
 	var flagger func(left, right uint32, value uint64) (N, Z, C, V bool)
 	logic := false
 	void := false
+
 	switch Opcode {
 	case 0x0:
-		doOp = c.Arm_AND
+		doOp = AND
 		flagger = FlagLogic
 		logic = true
 	case 0x1:
-		doOp = c.Arm_EOR
+		doOp = EOR
 		flagger = FlagLogic
 		logic = true
 	case 0x2:
-		doOp = c.Arm_SUB
+		doOp = SUB
 		flagger = FlagArithSub
 	case 0x3:
-		doOp = c.Arm_RSB
+		doOp = RSB
 		flagger = FlagArithReSub
 	case 0x4:
-		doOp = c.Arm_ADD
+		doOp = ADD
 		flagger = FlagArithAdd
 	case 0x5:
-		doOp = c.Arm_ADC
+		doOp = ADC
 		flagger = FlagArithAdd
 	case 0x6:
-		doOp = c.Arm_SBC
+		doOp = SBC
 		flagger = FlagArithSub
 	case 0x7:
-		doOp = c.Arm_RSC
+		doOp = RSC
 		flagger = FlagArithReSub
 	case 0x8:
-		doOp = c.Arm_TST
+		doOp = TST
 		flagger = FlagLogic
 		logic = true
 		void = true
 	case 0x9:
-		doOp = c.Arm_TEQ
+		doOp = TEQ
 		flagger = FlagLogic
 		logic = true
 		void = true
 	case 0xA:
-		doOp = c.Arm_CMP
+		doOp = CMP
 		flagger = FlagArithSub
 		void = true
 	case 0xB:
-		doOp = c.Arm_CMN
+		doOp = CMN
 		flagger = FlagArithAdd
 		void = true
 	case 0xC:
-		doOp = c.Arm_ORR
+		doOp = ORR
 		flagger = FlagLogic
 		logic = true
 	case 0xD:
-		doOp = c.Arm_MOV
+		doOp = MOV
 		flagger = FlagLogic
 		logic = true
 	case 0xE:
-		doOp = c.Arm_BIC
+		doOp = BIC
 		flagger = FlagLogic
 		logic = true
 	case 0xF:
-		doOp = c.Arm_MVN
+		doOp = MVN
 		flagger = FlagLogic
 		logic = true
 	default:
@@ -121,7 +118,7 @@ func (c *CPU) ArmALU(instruction uint32) {
 
 	S := ReadBits(instruction, 20, 1)
 
-	value := doOp(Rd, Rn, Op2, Cy)
+	value := doOp(Rn, Op2, Cy)
 
 	if !void {
 		c.R[Rd] = uint32(value)
@@ -179,72 +176,6 @@ func (c *CPU) ArmALU(instruction uint32) {
 	//If S=1, Rd=R15; should not be used in user mode:
 
 	//If S=0: Flags are not affected (not allowed for CMP,CMN,TEQ,TST).
-
-	return
-}
-
-func (c *CPU) Arm_AND(Rd, Rn, Op2, Cy uint32) (value uint64) { // Rd = Rn AND Op2
-	return uint64(Rn & Op2)
-}
-
-func (c *CPU) Arm_EOR(Rd, Rn, Op2, Cy uint32) (value uint64) { // Rd = Rn XOR Op2
-	return uint64(Rn ^ Op2)
-}
-
-func (c *CPU) Arm_SUB(Rd, Rn, Op2, Cy uint32) (value uint64) { // Rd = Rn-Op2
-	return uint64(Rn) - uint64(Op2)
-}
-
-func (c *CPU) Arm_RSB(Rd, Rn, Op2, Cy uint32) (value uint64) { // Rd = Op2-Rn
-	return uint64(Op2) - uint64(Rn)
-}
-
-func (c *CPU) Arm_ADD(Rd, Rn, Op2, Cy uint32) (value uint64) { // Rd = Rn+Op2
-	return uint64(Rn) + uint64(Op2)
-}
-
-func (c *CPU) Arm_ADC(Rd, Rn, Op2, Cy uint32) (value uint64) { // Rd = Rn+Op2+Cy
-	return uint64(Rn) + uint64(Op2) + uint64(Cy)
-}
-
-func (c *CPU) Arm_SBC(Rd, Rn, Op2, Cy uint32) (value uint64) { // Rd = Rn-Op2+Cy-1
-	return uint64(Rn) - uint64(Op2) + uint64(Cy) - 1
-}
-
-func (c *CPU) Arm_RSC(Rd, Rn, Op2, Cy uint32) (value uint64) { // Rd = Op2-Rn+Cy-1
-	return uint64(Op2) - uint64(Rn) + uint64(Cy) - 1
-}
-
-func (c *CPU) Arm_TST(Rd, Rn, Op2, Cy uint32) (value uint64) { // Void = Rn AND Op2
-	return uint64(Rn & Op2)
-}
-
-func (c *CPU) Arm_TEQ(Rd, Rn, Op2, Cy uint32) (value uint64) { // Void = Rn XOR Op2
-	return uint64(Rn ^ Op2)
-}
-
-func (c *CPU) Arm_CMP(Rd, Rn, Op2, Cy uint32) (value uint64) { // Void = Rn-Op2
-	return uint64(Rn) - uint64(Op2)
-}
-
-func (c *CPU) Arm_CMN(Rd, Rn, Op2, Cy uint32) (value uint64) { // Void = Rn+Op2
-	return uint64(Rn) + uint64(Op2)
-}
-
-func (c *CPU) Arm_ORR(Rd, Rn, Op2, Cy uint32) (value uint64) { // Rd = Rn OR Op2
-	return uint64(Rn | Op2)
-}
-
-func (c *CPU) Arm_MOV(Rd, Rn, Op2, Cy uint32) (value uint64) { // Rd = Op2
-	return uint64(Op2)
-}
-
-func (c *CPU) Arm_BIC(Rd, Rn, Op2, Cy uint32) (value uint64) { // Rd = Rn AND NOT Op2
-	return uint64(Rn & ^Op2)
-}
-
-func (c *CPU) Arm_MVN(Rd, Rn, Op2, Cy uint32) (value uint64) { // Rd = NOT Op2
-	return uint64(^Op2)
 }
 
 func (c *CPU) Arm_Rn(instruction uint32) uint32 {
@@ -350,21 +281,6 @@ func (c *CPU) ArmShift(shiftType uint32, value, amount uint32, S uint32, I uint3
 	}
 }
 
-func Shift(shiftType uint32, value, amount uint32) (uint32, bool) {
-	switch shiftType {
-	case LSL:
-		return ShiftLSR(value, amount)
-	case LSR:
-		return ShiftLSR(value, amount)
-	case ASR:
-		return ShiftASR(value, amount)
-	case ROR:
-		return ShiftROR(value, amount)
-	default:
-		panic(fmt.Sprintf("bad shift: %d", shiftType))
-	}
-}
-
 func (c *CPU) ArmBranch(instruction uint32) {
 	map[uint32]func(uint32){
 		0: c.Arm_B,
@@ -375,13 +291,13 @@ func (c *CPU) ArmBranch(instruction uint32) {
 }
 
 func (c *CPU) Arm_B(instruction uint32) {
-	nn := Signify(ReadBits(instruction, 0, 24), 24) << 2
+	nn := signify(ReadBits(instruction, 0, 24), 24) << 2
 	c.R[15] = addInt(c.R[15], nn)
 }
 
 func (c *CPU) Arm_BL(instruction uint32) {
-	nn := Signify(ReadBits(instruction, 0, 24), 24) << 2
-	c.R[14] = c.R[15]
+	nn := signify(ReadBits(instruction, 0, 24), 24) << 2
+	c.R[14] = c.curr + 4
 	c.R[15] = addInt(c.R[15], nn)
 }
 
@@ -395,22 +311,85 @@ func (c *CPU) ArmBranchX(instruction uint32) {
 }
 
 func (c *CPU) Arm_BX(instruction uint32) {
-	c.cpsrSetState(1)
 	Rn := ReadBits(instruction, 0, 4)
-	value := SetBits(c.R[Rn], 0, 1, 1)
+	value := c.R[Rn]
+	T := ReadBits(value, 0, 1)
+	c.cpsrSetState(T)
+	value |= 1
 	c.R[15] = value - 1
 }
 
 func (c *CPU) Arm_BLX(instruction uint32) {
-	c.cpsrSetState(1)
 	Rn := ReadBits(instruction, 0, 4)
-	value := SetBits(c.R[Rn], 0, 1, 1)
-	c.R[14] = c.R[15]
+	value := c.R[Rn]
+	T := ReadBits(value, 0, 1)
+	c.cpsrSetState(T)
+	value |= 1
+	c.R[14] = c.curr + 4
 	c.R[15] = value - 1
 }
 
+func (c *CPU) ArmPSR(instruction uint32) {
+	Opcode := ReadBits(instruction, 21, 1)
+
+	map[uint32]func(uint32){
+		0: c.ArmMRS,
+		1: c.ArmMSR,
+	}[Opcode](instruction)
+}
+
+func (c *CPU) ArmMRS(instruction uint32) {
+	Rd := ReadBits(instruction, 12, 4)
+	Psr := ReadBits(instruction, 22, 1)
+
+	SWP := ReadBits(instruction, 16, 4)
+	if SWP != 0b1111 {
+		noins(instruction)
+	}
+
+	switch Psr {
+	case 0:
+		c.R[Rd] = c.CPSR
+	case 1:
+		c.R[Rd] = c.SPSR
+	}
+}
+
 func (c *CPU) ArmMSR(instruction uint32) {
-	noins(instruction)
+	I := ReadBits(instruction, 25, 1)
+	Psr := ReadBits(instruction, 22, 1)
+
+	f := ((ReadBits(instruction, 19, 1) ^ 1) - 1) >> 0
+	s := ((ReadBits(instruction, 18, 1) ^ 1) - 1) >> 8
+	x := ((ReadBits(instruction, 17, 1) ^ 1) - 1) >> 16
+	c2 := ((ReadBits(instruction, 16, 1) ^ 1) - 1) >> 24
+	fieldMask := f | s | x | c2
+
+	var Op uint32
+	switch I {
+	case 0:
+		Rm := ReadBits(instruction, 0, 4)
+		Op = c.R[Rm]
+	case 1:
+		rotate := 2 * ReadBits(instruction, 8, 4)
+		imm := ReadBits(instruction, 0, 8)
+		Op, _ = ShiftROR(imm, rotate)
+	}
+
+	if c.cpsrMode() == USR {
+		fieldMask &= ^c2
+	}
+
+	if Psr == 0 {
+		cpsr := (c.CPSR & ^fieldMask) | (Op & fieldMask)
+
+		mode := ReadBits(cpsr, 0, 5)
+		c.cpsrSetMode(mode)
+
+		c.CPSR = cpsr
+	} else {
+		c.SPSR = (c.SPSR &^ fieldMask) | (Op & fieldMask)
+	}
 }
 
 func (c *CPU) ArmMemory(instruction uint32) {
@@ -502,5 +481,10 @@ func (c *CPU) ArmMemoryBlock(instruction uint32) {
 }
 
 func (c *CPU) ArmSWI(instruction uint32) {
-	noins(instruction)
+	c.cpsrSetMode(SVC)
+	c.R[14] = c.next
+	c.cpsrSetState(0)
+	c.cpsrSetIRQDisable(1)
+	c.R[15] = 8
+	c.prefetchFlush()
 }

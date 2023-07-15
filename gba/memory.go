@@ -6,18 +6,28 @@ func NewMemory() Memory {
 	return make(Memory, 0x10000000)
 }
 
+func resolveAddress(address uint32) uint32 {
+	if address >= 0xE000000 {
+		address = 0xE000000 | address&0xFFFF
+	}
+	return address
+}
+
 func (m Memory) Access8(address uint32) uint8 {
+	address = resolveAddress(address)
 	address = address & ^uint32(0)
 	v := uint8(m[address])
 	return v
 }
 
 func (m Memory) Set8(address uint32, value uint8) {
+	address = resolveAddress(address)
 	address = address & ^uint32(0)
 	m[address] = uint8(value)
 }
 
 func (m Memory) Access16(address uint32) uint16 {
+	address = resolveAddress(address)
 	address = address & ^uint32(1)
 	v := uint16(m[address])
 	v += uint16(m[address+1]) << 8
@@ -25,12 +35,14 @@ func (m Memory) Access16(address uint32) uint16 {
 }
 
 func (m Memory) Set16(address uint32, value uint16) {
+	address = resolveAddress(address)
 	address = address & ^uint32(1)
 	m[address] = uint8(value)
 	m[address+1] = uint8(value >> 8)
 }
 
 func (m Memory) Access32(address uint32) uint32 {
+	address = resolveAddress(address)
 	address = address & ^uint32(3)
 	v := uint32(m[address])
 	v += uint32(m[address+1]) << 8
@@ -40,6 +52,7 @@ func (m Memory) Access32(address uint32) uint32 {
 }
 
 func (m Memory) Set32(address uint32, value uint32) {
+	address = resolveAddress(address)
 	address = address & ^uint32(3)
 	m[address] = uint8(value)
 	m[address+1] = uint8(value >> 8)
@@ -48,10 +61,13 @@ func (m Memory) Set32(address uint32, value uint32) {
 }
 
 func (m Memory) AccessSlice(address uint32, to uint32) []byte {
+	address = resolveAddress(address)
+	to = resolveAddress(to)
 	return m[address : to+1]
 }
 
 func (m Memory) SetSlice(address uint32, value []byte) {
+	address = resolveAddress(address)
 	for i := uint32(0); i < uint32(len(value)); i++ {
 		m[address+i] = value[i]
 	}
