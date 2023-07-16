@@ -25,7 +25,7 @@ func (c *CPU) Boot() {
 	c.prefetchFlush()
 
 	SetIORegister(c.Memory, DISPCNT, 0x80)
-	c.ArmSWI(0)
+	c.SWI()
 
 	c.Run()
 }
@@ -353,37 +353,46 @@ func (c *CPU) cond(cond uint32) bool {
 	V := c.cpsrV()
 
 	switch cond {
-	case 0x0: // EQ Z=1 equal (zero) (same)
+	case 0b0000: // EQ Z=1 equal (zero) (same)
 		return Z == 1
-	case 0x1: // NE Z=1 not equal (nonzero) (not same)
+	case 0b0001: // NE Z=1 not equal (nonzero) (not same)
 		return Z == 0
-	case 0x2: // CS/HS C=1 unsigned higher or same (carry set)
+	case 0b0010: // CS/HS C=1 unsigned higher or same (carry set)
 		return C == 1
-	case 0x3: // CC/LO C=0 unsigned lower (carry cleared)
+	case 0xb0011: // CC/LO C=0 unsigned lower (carry cleared)
 		return C == 0
-	case 0x4: // MI N=1 signed negative (minus)
+	case 0b0100: // MI N=1 signed negative (minus)
 		return N == 1
-	case 0x5: // PL N=0 signed positive or zero (plus)
+	case 0b0101: // PL N=0 signed positive or zero (plus)
 		return N == 0
-	case 0x6: // VS V=1 signed overflow (V set)
+	case 0b0110: // VS V=1 signed overflow (V set)
 		return V == 1
-	case 0x7: // VC V=0 signed no overflow (V cleared)
+	case 0b0111: // VC V=0 signed no overflow (V cleared)
 		return V == 0
-	case 0x8: // HI C=1 and Z=0 unsigned higher
+	case 0b1000: // HI C=1 and Z=0 unsigned higher
 		return C == 1 && Z == 0
-	case 0x9: // LS C=0 or Z=1 unsigned lower or same
+	case 0b1001: // LS C=0 or Z=1 unsigned lower or same
 		return C == 0 || Z == 1
-	case 0xA: // GE N=V signed greater or equal
+	case 0b1010: // GE N=V signed greater or equal
 		return N == V
-	case 0xB: // LT N<>V signed less than
+	case 0b1011: // LT N<>V signed less than
 		return N != V
-	case 0xC: // GT Z=0 and N=V signed greater than
+	case 0b1100: // GT Z=0 and N=V signed greater than
 		return Z == 0 && N == V
-	case 0xD: // LE Z=1 or N<>V signed less or equal
+	case 0b1101: // LE Z=1 or N<>V signed less or equal
 		return Z == 1 || N != V
-	case 0xE: // AL - always (the "AL" suffix can be omitted)
+	case 0b1110: // AL - always (the "AL" suffix can be omitted)
 		return true
 	default:
 		return false
 	}
+}
+
+func (c *CPU) SWI() {
+	c.cpsrSetMode(SVC)
+	c.R[14] = c.next
+	c.cpsrSetState(0)
+	c.cpsrSetIRQDisable(1)
+	c.R[15] = 8
+	c.prefetchFlush()
 }

@@ -9,11 +9,11 @@ func (c *CPU) Arm(instruction uint32) {
 		return
 	}
 
-	do := ParseArm(c, instruction)
+	do := c.ParseArm(instruction)
 	do(instruction)
 }
 
-func ParseArm(c *CPU, instruction uint32) func(instruction uint32) {
+func (c *CPU) ParseArm(instruction uint32) func(instruction uint32) {
 	switch {
 	case instruction&0b0000_1111_1111_1111_1111_1111_0000_0000 == 0b0000_0001_0010_1111_1111_1111_0000_0000:
 		return c.ArmBranchX
@@ -122,6 +122,10 @@ func (c *CPU) ArmALU(instruction uint32) {
 
 	if !void {
 		c.R[Rd] = uint32(value)
+
+		if Rd == 15 {
+			c.prefetchFlush()
+		}
 	}
 
 	N, Z, C, V := flagger(Rn, Op2, value)
@@ -130,26 +134,21 @@ func (c *CPU) ArmALU(instruction uint32) {
 	case S == 1 && Rd != 15 && logic:
 		c.cpsrSetZ(Z)
 		c.cpsrSetN(N)
-		c.R[Rd] = uint32(value)
 	case S == 1 && Rd != 15 && !logic:
 		c.cpsrSetV(V)
 		c.cpsrSetC(C)
 		c.cpsrSetZ(Z)
 		c.cpsrSetN(N)
-		c.R[Rd] = uint32(value)
-	case S == 1 && Rd == 15 && void:
-		c.R[15] = uint32(value)
+	case S == 1 && Rd == 15 && !void:
 		c.cpsrSetZ(Z)
 		c.cpsrSetN(N)
 		c.cpsrSetC(C)
 		c.cpsrSetV(V)
 
-		//if c.cpsrMode() != USR {
-		//	c.cpsrSetI(I)
-		//	c.cpsrSetF(F)
-		//	c.cpsrSetM1(M1)
-		//	c.cpsrSetM0(M0)
-		//}
+		cpsr := c.SPSR
+		newMode := ReadBits(cpsr, 0, 5)
+		c.cpsrSetMode(newMode)
+		c.CPSR = cpsr
 
 		cond1 := c.cpsrIRQDisable() == 0
 		cond2 := ReadIORegister(c.Memory, IME) > 0
@@ -157,25 +156,7 @@ func (c *CPU) ArmALU(instruction uint32) {
 		if cond1 && cond2 && cond3 {
 			c.exception(0x18)
 		}
-	case S == 1 && Rd == 15:
-		c.CPSR = c.SPSR
-		c.R[15] = uint32(value)
-	case S == 0:
 	}
-
-	//Using R15 (PC)
-	//When using R15 as Destination (Rd), note below CPSR description and Execution time description.
-
-	//Returned CPSR Flags
-	//If S=1, Rd<>R15, logical operations (AND,EOR,TST,TEQ,ORR,MOV,BIC,MVN):
-
-	//If S=1, Rd<>R15, arithmetic operations (SUB,RSB,ADD,ADC,SBC,RSC,CMP,CMN):
-
-	//IF S=1, with unused Rd bits=1111b, {P} opcodes (CMPP/CMNP/TSTP/TEQP):
-
-	//If S=1, Rd=R15; should not be used in user mode:
-
-	//If S=0: Flags are not affected (not allowed for CMP,CMN,TEQ,TST).
 }
 
 func (c *CPU) Arm_Rn(instruction uint32) uint32 {
@@ -332,10 +313,12 @@ func (c *CPU) Arm_BLX(instruction uint32) {
 func (c *CPU) ArmPSR(instruction uint32) {
 	Opcode := ReadBits(instruction, 21, 1)
 
-	map[uint32]func(uint32){
-		0: c.ArmMRS,
-		1: c.ArmMSR,
-	}[Opcode](instruction)
+	switch Opcode {
+	case 0:
+		c.ArmMRS(instruction)
+	case 1:
+		c.ArmMSR(instruction)
+	}
 }
 
 func (c *CPU) ArmMRS(instruction uint32) {
@@ -401,7 +384,7 @@ func (c *CPU) ArmMemory(instruction uint32) {
 	Rn := ReadBits(instruction, 16, 4)
 	Rd := ReadBits(instruction, 12, 4)
 
-	Offset := uint32(0)
+	var Offset uint32
 	if I == 0 {
 		Offset = ReadBits(instruction, 0, 12)
 	} else {
@@ -414,7 +397,11 @@ func (c *CPU) ArmMemory(instruction uint32) {
 	if U == 0 {
 		Offset = -Offset
 	}
-	addr := c.R[Rn] + Offset
+	addr := c.R[Rn]
+
+	if P == 1 {
+		addr += Offset
+	}
 
 	if L == 1 {
 		if B == 1 {
@@ -430,61 +417,168 @@ func (c *CPU) ArmMemory(instruction uint32) {
 		}
 	}
 
+	if P == 0 {
+		addr += Offset
+	}
+
 	if P == 0 || ReadBits(instruction, 21, 1) == 1 {
 		c.R[Rn] = addr
+	}
+
+	if Rd == 15 {
+		c.prefetchFlush()
 	}
 }
 
 func (c *CPU) ArmMemoryBlock(instruction uint32) {
+	L := ReadBits(instruction, 20, 1)
+
+	switch L {
+	case 0:
+		c.Arm_STM(instruction)
+	case 1:
+		c.Arm_LDM(instruction)
+	}
+}
+
+func (c *CPU) Arm_LDM(instruction uint32) {
 	P := ReadBits(instruction, 24, 1)
 	U := ReadBits(instruction, 23, 1)
 	S := ReadBits(instruction, 22, 1)
 	W := ReadBits(instruction, 21, 1)
-	L := ReadBits(instruction, 20, 1)
 	Rn := ReadBits(instruction, 16, 4)
 	Rlist := ReadBits(instruction, 0, 16)
 
+	oldMode := c.cpsrMode()
+	if S == 1 && (Rlist>>15)&1 == 0 {
+		c.cpsrSetMode(USR)
+	}
+
 	address := c.R[Rn]
+	oldRn := c.R[Rn]
 
-	for i := uint32(0); i < 16; i++ {
-		if (Rlist>>i)&1 == 1 {
-			if P == 1 {
-				if U == 1 {
-					address += 4
-				} else {
-					address -= 4
-				}
-			}
-
-			if L == 1 {
+	switch {
+	case P == 0 && U == 0: // DA
+		for i := 15; i >= 0; i-- {
+			if (Rlist>>i)&1 == 1 {
 				c.R[i] = c.Memory.Access32(address)
-				if S == 1 && i == 15 && c.CPSR>>29&1 == 0 {
-					c.CPSR = c.SPSR
-				}
-			} else {
-				c.Memory.Set32(address, c.R[i])
+				address -= 4
 			}
-
-			if P == 0 {
-				if U == 1 {
-					address += 4
-				} else {
-					address -= 4
-				}
+		}
+	case P == 1 && U == 0: // DB
+		for i := 15; i >= 0; i-- {
+			if (Rlist>>i)&1 == 1 {
+				address -= 4
+				c.R[i] = c.Memory.Access32(address)
+			}
+		}
+	case P == 0 && U == 1: // IA
+		for i := 0; i <= 15; i++ {
+			if (Rlist>>i)&1 == 1 {
+				c.R[i] = c.Memory.Access32(address)
+				address += 4
+			}
+		}
+	case P == 1 && U == 1: // IB
+		for i := 0; i <= 15; i++ {
+			if (Rlist>>i)&1 == 1 {
+				address += 4
+				c.R[i] = c.Memory.Access32(address)
 			}
 		}
 	}
 
 	if W == 1 {
-		c.R[Rn] = address
+		switch U {
+		case 0:
+			c.R[Rn] = oldRn - setBits(Rlist)*4
+		case 1:
+			c.R[Rn] = oldRn + setBits(Rlist)*4
+		}
+	}
+
+	if (Rlist>>15)&1 == 1 {
+		if S == 1 {
+			c.CPSR = c.SPSR
+		}
+
+		c.prefetchFlush()
+	}
+
+	if S == 1 && (Rlist>>15)&1 == 0 {
+		c.cpsrSetMode(oldMode)
+	}
+}
+
+func (c *CPU) Arm_STM(instruction uint32) {
+	P := ReadBits(instruction, 24, 1)
+	U := ReadBits(instruction, 23, 1)
+	S := ReadBits(instruction, 22, 1)
+	W := ReadBits(instruction, 21, 1)
+	Rn := ReadBits(instruction, 16, 4)
+	Rlist := ReadBits(instruction, 0, 16)
+
+	oldMode := c.cpsrMode()
+	if S == 1 {
+		c.cpsrSetMode(USR)
+	}
+
+	address := c.R[Rn]
+	oldRn := c.R[Rn]
+
+	switch {
+	case P == 0 && U == 0: // DA
+		for i := 15; i >= 0; i-- {
+			if (Rlist>>i)&1 == 1 {
+				c.Memory.Set32(address, c.R[i])
+				address -= 4
+			}
+		}
+	case P == 1 && U == 0: // DB
+		for i := 15; i >= 0; i-- {
+			if (Rlist>>i)&1 == 1 {
+				address -= 4
+				c.Memory.Set32(address, c.R[i])
+			}
+		}
+	case P == 0 && U == 1: // IA
+		for i := 0; i <= 15; i++ {
+			if (Rlist>>i)&1 == 1 {
+				c.Memory.Set32(address, c.R[i])
+				address += 4
+			}
+		}
+	case P == 1 && U == 1: // IB
+		for i := 0; i <= 15; i++ {
+			if (Rlist>>i)&1 == 1 {
+				address += 4
+				c.Memory.Set32(address, c.R[i])
+			}
+		}
+	}
+
+	if W == 1 {
+		switch U {
+		case 0:
+			c.R[Rn] = oldRn - setBits(Rlist)*4
+		case 1:
+			c.R[Rn] = oldRn + setBits(Rlist)*4
+		}
+	}
+
+	if (Rlist>>15)&1 == 1 {
+		if S == 1 {
+			c.CPSR = c.SPSR
+		}
+
+		c.prefetchFlush()
+	}
+
+	if S == 1 {
+		c.cpsrSetMode(oldMode)
 	}
 }
 
 func (c *CPU) ArmSWI(instruction uint32) {
-	c.cpsrSetMode(SVC)
-	c.R[14] = c.next
-	c.cpsrSetState(0)
-	c.cpsrSetIRQDisable(1)
-	c.R[15] = 8
-	c.prefetchFlush()
+	c.SWI()
 }

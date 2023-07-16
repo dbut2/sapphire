@@ -34,6 +34,27 @@ func main() {
 	setup := testSetup3
 	draw := testDraw3
 
+	go func() {
+		setup(emu)
+		drawing := false
+
+		for {
+			<-ticker.C
+			if drawing {
+				continue
+			}
+			drawing = true
+
+			emu.LCD.WriteTo(img)
+			cimg.Refresh()
+
+			go func() {
+				draw(emu)
+				drawing = false
+			}()
+		}
+	}()
+
 	w.SetMainMenu(&fyne.MainMenu{
 		Items: []*fyne.Menu{
 			{
@@ -99,27 +120,6 @@ func main() {
 			},
 		},
 	})
-
-	go func() {
-		setup(emu)
-		drawing := false
-
-		for {
-			<-ticker.C
-			if drawing {
-				continue
-			}
-			drawing = true
-
-			emu.LCD.WriteTo(img)
-			cimg.Refresh()
-
-			go func() {
-				draw(emu)
-				drawing = false
-			}()
-		}
-	}()
 
 	go emu.CPU.Boot()
 	w.ShowAndRun()

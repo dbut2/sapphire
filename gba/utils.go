@@ -2,6 +2,7 @@ package gba
 
 import (
 	"fmt"
+	"math/bits"
 )
 
 func FlagLogic(left, right uint32, value uint64) (N, Z, C, V bool) {
@@ -45,7 +46,7 @@ const (
 func Shift(shiftType uint32, value, amount uint32) (uint32, bool) {
 	switch shiftType {
 	case LSL:
-		return ShiftLSR(value, amount)
+		return ShiftLSL(value, amount)
 	case LSR:
 		return ShiftLSR(value, amount)
 	case ASR:
@@ -87,4 +88,8 @@ func addInt(a uint32, b int32) uint32 {
 func signify(value uint32, size uint32) int32 {
 	shiftValue := 32 - size
 	return int32(value<<shiftValue) >> shiftValue
+}
+
+func setBits(value uint32) uint32 {
+	return uint32(bits.OnesCount32(value))
 }
