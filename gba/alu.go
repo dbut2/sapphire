@@ -8,27 +8,31 @@ func EOR(left, right, carry uint32) (value uint64) { // value = left XOR right
 	return uint64(left ^ right)
 }
 
-func SUB(left, right, carry uint32) (value uint64) { // value = left-right
+func SUB(left, right, carry uint32) (value uint64) { // value = left - right
 	return uint64(left) - uint64(right)
 }
 
-func RSB(left, right, carry uint32) (value uint64) { // value = right-left
+func RSB(left, right, carry uint32) (value uint64) { // value = right - left
 	return uint64(right) - uint64(left)
 }
 
-func ADD(left, right, carry uint32) (value uint64) { // value = left+right
+func ADD(left, right, carry uint32) (value uint64) { // value = left + right
 	return uint64(left) + uint64(right)
 }
 
-func ADC(left, right, carry uint32) (value uint64) { // value = left+right+carry
+func ADC(left, right, carry uint32) (value uint64) { // value = left + right + carry
 	return uint64(left) + uint64(right) + uint64(carry)
 }
 
-func SBC(left, right, carry uint32) (value uint64) { // value = left-right+carry-1
+func SBCArm(left, right, carry uint32) (value uint64) { // value = left - right + carry - 1
 	return uint64(left) - uint64(right) + uint64(carry) - 1
 }
 
-func RSC(left, right, carry uint32) (value uint64) { // value = right-left+carry-1
+func SBCThumb(left, right, carry uint32) (value uint64) { // value = left - right - NOT carry
+	return uint64(left) - uint64(right) - uint64(^carry)
+}
+
+func RSC(left, right, carry uint32) (value uint64) { // value = right - left + carry - 1
 	return uint64(right) - uint64(left) + uint64(carry) - 1
 }
 
@@ -40,11 +44,11 @@ func TEQ(left, right, carry uint32) (value uint64) { // Void = left XOR right
 	return uint64(left ^ right)
 }
 
-func CMP(left, right, carry uint32) (value uint64) { // Void = left-right
+func CMP(left, right, carry uint32) (value uint64) { // Void = left - right
 	return uint64(left) - uint64(right)
 }
 
-func CMN(left, right, carry uint32) (value uint64) { // Void = left+right
+func CMN(left, right, carry uint32) (value uint64) { // Void = left + right
 	return uint64(left) + uint64(right)
 }
 
@@ -62,4 +66,8 @@ func BIC(left, right, carry uint32) (value uint64) { // value = left AND NOT rig
 
 func MVN(left, right, carry uint32) (value uint64) { // value = NOT right
 	return uint64(^right)
+}
+
+func MUL(left, right, carry uint32) (value uint64) {
+	return uint64(left) * uint64(right)
 }

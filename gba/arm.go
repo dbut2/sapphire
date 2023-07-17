@@ -68,7 +68,7 @@ func (c *CPU) ArmALU(instruction uint32) {
 		doOp = ADC
 		flagger = FlagArithAdd
 	case 0x6:
-		doOp = SBC
+		doOp = SBCArm
 		flagger = FlagArithSub
 	case 0x7:
 		doOp = RSC
@@ -145,10 +145,7 @@ func (c *CPU) ArmALU(instruction uint32) {
 		c.cpsrSetC(C)
 		c.cpsrSetV(V)
 
-		cpsr := c.SPSR
-		newMode := ReadBits(cpsr, 0, 5)
-		c.cpsrSetMode(newMode)
-		c.CPSR = cpsr
+		c.restoreCpsr()
 
 		cond1 := c.cpsrIRQDisable() == 0
 		cond2 := ReadIORegister(c.Memory, IME) > 0
@@ -497,16 +494,16 @@ func (c *CPU) Arm_LDM(instruction uint32) {
 		}
 	}
 
+	if S == 1 && (Rlist>>15)&1 == 0 {
+		c.cpsrSetMode(oldMode)
+	}
+
 	if (Rlist>>15)&1 == 1 {
 		if S == 1 {
-			c.CPSR = c.SPSR
+			c.restoreCpsr()
 		}
 
 		c.prefetchFlush()
-	}
-
-	if S == 1 && (Rlist>>15)&1 == 0 {
-		c.cpsrSetMode(oldMode)
 	}
 }
 
@@ -566,19 +563,20 @@ func (c *CPU) Arm_STM(instruction uint32) {
 		}
 	}
 
+	if S == 1 {
+		c.cpsrSetMode(oldMode)
+	}
+
 	if (Rlist>>15)&1 == 1 {
 		if S == 1 {
-			c.CPSR = c.SPSR
+			c.restoreCpsr()
 		}
 
 		c.prefetchFlush()
 	}
-
-	if S == 1 {
-		c.cpsrSetMode(oldMode)
-	}
 }
 
 func (c *CPU) ArmSWI(instruction uint32) {
-	c.SWI()
+	nn := ReadBits(instruction, 0, 24)
+	c.SWI(nn)
 }

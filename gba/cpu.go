@@ -25,7 +25,7 @@ func (c *CPU) Boot() {
 	c.prefetchFlush()
 
 	SetIORegister(c.Memory, DISPCNT, 0x80)
-	c.SWI()
+	c.exception(0x08)
 
 	c.Run()
 }
@@ -220,6 +220,13 @@ const (
 	SYS uint32 = 0b11111
 )
 
+func (c *CPU) restoreCpsr() {
+	cpsr := c.SPSR
+	newMode := ReadBits(cpsr, 0, 5)
+	c.cpsrSetMode(newMode)
+	c.CPSR = cpsr
+}
+
 func (c *CPU) cpsrMode() uint32 {
 	return ReadBits(c.CPSR, 0, 5)
 }
@@ -333,9 +340,7 @@ func (c *CPU) exception(vector uint32) {
 		c.cpsrSetMode(FIQ)
 	}
 
-	c.R[14] = c.R[15]
-	c.SPSR = c.CPSR
-
+	c.R[14] = c.next
 	c.cpsrSetState(0)
 	c.cpsrSetIRQDisable(1)
 	switch vector {
@@ -344,6 +349,7 @@ func (c *CPU) exception(vector uint32) {
 	}
 
 	c.R[15] = vector
+	c.prefetchFlush()
 }
 
 func (c *CPU) cond(cond uint32) bool {
@@ -359,7 +365,7 @@ func (c *CPU) cond(cond uint32) bool {
 		return Z == 0
 	case 0b0010: // CS/HS C=1 unsigned higher or same (carry set)
 		return C == 1
-	case 0xb0011: // CC/LO C=0 unsigned lower (carry cleared)
+	case 0b0011: // CC/LO C=0 unsigned lower (carry cleared)
 		return C == 0
 	case 0b0100: // MI N=1 signed negative (minus)
 		return N == 1
@@ -388,11 +394,70 @@ func (c *CPU) cond(cond uint32) bool {
 	}
 }
 
-func (c *CPU) SWI() {
-	c.cpsrSetMode(SVC)
-	c.R[14] = c.next
-	c.cpsrSetState(0)
-	c.cpsrSetIRQDisable(1)
-	c.R[15] = 8
-	c.prefetchFlush()
+const (
+	SoftReset        uint32 = 0x00
+	RegisterRamReset uint32 = 0x01
+	CpuSet           uint32 = 0x0B
+)
+
+func (c *CPU) SWI(comment uint32) {
+	switch comment {
+	case SoftReset:
+		c.R13 = 0x03007F00
+		c.R13_svc = 0x03007FE0
+		c.R13_irq = 0x03007FA0
+		flag := c.Memory.Access8(0x3007FFA)
+		for i := 0x3007E00; i <= 0x3007FFF; i++ {
+			c.Memory[i] = 0
+		}
+		if flag == 0 {
+			c.R[14] = 0x02000000
+		} else {
+			c.R[14] = 0x08000000
+		}
+		c.R[15] = c.R[14]
+		c.prefetchFlush()
+		return
+	case CpuSet:
+		source := c.R[0]
+		destination := c.R[1]
+		datasize := ReadBits(c.R[2], 26, 1)
+		fill := ReadBits(c.R[2], 24, 1)
+		count := ReadBits(c.R[2], 0, 21)
+
+		switch {
+		case fill == 0 && datasize == 0:
+			for i := uint32(0); i < count; i++ {
+				offset := i << 1
+				value := c.Memory.Access16(source + offset)
+				c.Memory.Set16(destination+offset, value)
+			}
+		case fill == 0 && datasize == 1:
+			for i := uint32(0); i < count; i++ {
+				offset := i << 2
+				value := c.Memory.Access32(source + offset)
+				c.Memory.Set32(destination+offset, value)
+			}
+		case fill == 1 && datasize == 0:
+			value := c.Memory.Access16(source)
+			for i := uint32(0); i < count; i++ {
+				offset := i << 1
+				c.Memory.Set16(destination+offset, value)
+			}
+		case fill == 1 && datasize == 1:
+			value := c.Memory.Access32(source)
+			for i := uint32(0); i < count; i++ {
+				offset := i << 2
+				c.Memory.Set32(destination+offset, value)
+			}
+		}
+	case RegisterRamReset:
+		c.exception(0x08)
+	default:
+		noComment(comment)
+	}
+}
+
+func noComment(comment uint32) {
+	panic(fmt.Sprintf("nothing to do for comment: 0x%02x", comment))
 }

@@ -31,8 +31,8 @@ func main() {
 
 	emu := gba.NewEmu(gamepak)
 
-	setup := testSetup3
-	draw := testDraw3
+	setup := testSetupNone
+	draw := testDrawNone
 
 	go func() {
 		setup(emu)
@@ -123,6 +123,14 @@ func main() {
 
 	go emu.CPU.Boot()
 	w.ShowAndRun()
+}
+
+func testSetupNone(emu *gba.Emulator) {
+
+}
+
+func testDrawNone(emu *gba.Emulator) {
+
 }
 
 func testSetup3(emu *gba.Emulator) {
