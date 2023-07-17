@@ -1,85 +1,46 @@
 package gba
 
-type Memory []byte
+import (
+	"github.com/dbut2/sapphire/gba/memory"
+)
 
-func NewMemory() Memory {
-	return make(Memory, 0x10000000)
+func NewMemory() memory.Memory {
+	m := memory.NewMap(parseAddress)
+
+	registerBlock(m, BIOS)
+	registerBlock(m, WRAM1)
+	registerBlock(m, WRAM2)
+	registerBlock(m, IOR)
+	registerBlock(m, Palette)
+	registerBlock(m, VRAM)
+	registerBlock(m, OAM)
+	registerBlock(m, GPRom1)
+	registerBlock(m, GPRom2)
+	registerBlock(m, GPRom3)
+
+	sram := memory.Mirror{Offset: memory.NewOffset(GPSRAM[0], GPSRAM[1]-GPSRAM[0]+1)}
+	m.Register(0x0E000000, sram)
+	m.Register(0x0F000000, sram)
+
+	return m
 }
 
-func resolveAddress(address uint32) uint32 {
-	if address >= 0xE000000 {
-		address = 0xE000000 | address&0xFFFF
-	}
-	return address
+func registerBlock(m memory.Map[uint32], block MemoryBlock) {
+	sub := memory.NewOffset(block[0], block[1]-block[0]+1)
+	m.Register(block[0], sub)
 }
 
-func (m Memory) Access8(address uint32) uint8 {
-	address = resolveAddress(address)
-	address = address & ^uint32(0)
-	v := uint8(m[address])
-	return v
-}
-
-func (m Memory) Set8(address uint32, value uint8) {
-	address = resolveAddress(address)
-	address = address & ^uint32(0)
-	m[address] = uint8(value)
-}
-
-func (m Memory) Access16(address uint32) uint16 {
-	address = resolveAddress(address)
-	address = address & ^uint32(1)
-	v := uint16(m[address])
-	v += uint16(m[address+1]) << 8
-	return v
-}
-
-func (m Memory) Set16(address uint32, value uint16) {
-	address = resolveAddress(address)
-	address = address & ^uint32(1)
-	m[address] = uint8(value)
-	m[address+1] = uint8(value >> 8)
-}
-
-func (m Memory) Access32(address uint32) uint32 {
-	address = resolveAddress(address)
-	address = address & ^uint32(3)
-	v := uint32(m[address])
-	v += uint32(m[address+1]) << 8
-	v += uint32(m[address+2]) << 16
-	v += uint32(m[address+3]) << 24
-	return v
-}
-
-func (m Memory) Set32(address uint32, value uint32) {
-	address = resolveAddress(address)
-	address = address & ^uint32(3)
-	m[address] = uint8(value)
-	m[address+1] = uint8(value >> 8)
-	m[address+2] = uint8(value >> 16)
-	m[address+3] = uint8(value >> 24)
-}
-
-func (m Memory) AccessSlice(address uint32, to uint32) []byte {
-	address = resolveAddress(address)
-	to = resolveAddress(to)
-	return m[address : to+1]
-}
-
-func (m Memory) SetSlice(address uint32, value []byte) {
-	address = resolveAddress(address)
-	for i := uint32(0); i < uint32(len(value)); i++ {
-		m[address+i] = value[i]
-	}
+func parseAddress(address uint32) uint32 {
+	return (address >> 24) & 0b1111
 }
 
 type MemoryBlock [2]uint32
 
-func ReadMemoryBlock(m Memory, mb MemoryBlock) []byte {
-	return m.AccessSlice(mb[0], mb[1])
+func ReadMemoryBlock(m memory.Memory, mb MemoryBlock) []byte {
+	return m.GetSlice(mb[0], mb[1]-mb[0])
 }
 
-func SetMemoryBlock(m Memory, mb MemoryBlock, value []byte) {
+func SetMemoryBlock(m memory.Memory, mb MemoryBlock, value []byte) {
 	m.SetSlice(mb[0], value)
 }
 
@@ -89,20 +50,20 @@ type Size interface {
 	uint8 | uint16 | uint32 | uint64
 }
 
-func ReadIORegister[S Size](m Memory, r IORegister[S]) S {
+func ReadIORegister[S Size](m memory.Memory, r IORegister[S]) S {
 	switch v := any(*new(S)).(type) {
 	case uint8:
-		return S(m.Access8(uint32(r)))
+		return S(m.Get8(uint32(r)))
 	case uint16:
-		return S(m.Access16(uint32(r)))
+		return S(m.Get16(uint32(r)))
 	case uint32:
-		return S(m.Access32(uint32(r)))
+		return S(m.Get32(uint32(r)))
 	default:
 		panic(v)
 	}
 }
 
-func SetIORegister[S Size](m Memory, r IORegister[S], value S) {
+func SetIORegister[S Size](m memory.Memory, r IORegister[S], value S) {
 	switch v := any(*new(S)).(type) {
 	case uint8:
 		m.Set8(uint32(r), uint8(value))
@@ -129,11 +90,11 @@ func Flag[S Size](r IORegister[S], bit uint8, size uint8) IOFlag[S] {
 	}
 }
 
-func ReadFlag[S Size](m Memory, flag IOFlag[S]) S {
+func ReadFlag[S Size](m memory.Memory, flag IOFlag[S]) S {
 	return ReadBits(ReadIORegister(m, flag.Register), flag.Bit, flag.Size)
 }
 
-func SetFlag[S Size](m Memory, flag IOFlag[S], value S) {
+func SetFlag[S Size](m memory.Memory, flag IOFlag[S], value S) {
 	SetIORegister(m, flag.Register, SetBits(ReadIORegister(m, flag.Register), flag.Bit, flag.Size, value))
 }
 

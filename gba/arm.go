@@ -402,9 +402,9 @@ func (c *CPU) ArmMemory(instruction uint32) {
 
 	if L == 1 {
 		if B == 1 {
-			c.R[Rd] = uint32(c.Memory.Access8(addr))
+			c.R[Rd] = uint32(c.Memory.Get8(addr))
 		} else {
-			c.R[Rd] = c.Memory.Access32(addr)
+			c.R[Rd] = c.Memory.Get32(addr)
 		}
 	} else {
 		if B == 1 {
@@ -458,7 +458,7 @@ func (c *CPU) Arm_LDM(instruction uint32) {
 	case P == 0 && U == 0: // DA
 		for i := 15; i >= 0; i-- {
 			if (Rlist>>i)&1 == 1 {
-				c.R[i] = c.Memory.Access32(address)
+				c.R[i] = c.Memory.Get32(address)
 				address -= 4
 			}
 		}
@@ -466,13 +466,13 @@ func (c *CPU) Arm_LDM(instruction uint32) {
 		for i := 15; i >= 0; i-- {
 			if (Rlist>>i)&1 == 1 {
 				address -= 4
-				c.R[i] = c.Memory.Access32(address)
+				c.R[i] = c.Memory.Get32(address)
 			}
 		}
 	case P == 0 && U == 1: // IA
 		for i := 0; i <= 15; i++ {
 			if (Rlist>>i)&1 == 1 {
-				c.R[i] = c.Memory.Access32(address)
+				c.R[i] = c.Memory.Get32(address)
 				address += 4
 			}
 		}
@@ -480,7 +480,7 @@ func (c *CPU) Arm_LDM(instruction uint32) {
 		for i := 0; i <= 15; i++ {
 			if (Rlist>>i)&1 == 1 {
 				address += 4
-				c.R[i] = c.Memory.Access32(address)
+				c.R[i] = c.Memory.Get32(address)
 			}
 		}
 	}

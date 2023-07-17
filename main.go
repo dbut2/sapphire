@@ -12,7 +12,7 @@ import (
 	"github.com/dbut2/sapphire/gba"
 )
 
-//go:embed sapphire.gba
+//go:embed main.gba
 var gamepak []byte
 
 func main() {
@@ -30,6 +30,14 @@ func main() {
 	ticker := time.NewTicker(time.Second / time.Duration(fps))
 
 	emu := gba.NewEmu(gamepak)
+
+	go func() {
+		nt := time.NewTicker(time.Second)
+		for {
+			<-nt.C
+			//fmt.Println(gba.ReadMemoryBlock(emu.Memory, gba.VRAM))
+		}
+	}()
 
 	setup := testSetupNone
 	draw := testDrawNone
@@ -149,7 +157,7 @@ func testSetup3(emu *gba.Emulator) {
 
 func testDraw3(emu *gba.Emulator) {
 	for i := uint32(0); i < 65536; i++ {
-		r, g, b, a := emu.LCD.RGBA(emu.Memory.Access16(gba.VRAM[0] + i*2))
+		r, g, b, a := emu.LCD.RGBA(emu.Memory.Get16(gba.VRAM[0] + i*2))
 		c := emu.LCD.Color(r, g+1, b, a)
 		emu.Memory.Set16(gba.VRAM[0]+i*2, c)
 	}
@@ -170,7 +178,7 @@ func testSetup5(emu *gba.Emulator) {
 
 func testDraw5(emu *gba.Emulator) {
 	for i := uint32(0); i < 65536; i++ {
-		r, g, b, a := emu.LCD.RGBA(emu.Memory.Access16(gba.VRAM[0] + i*2))
+		r, g, b, a := emu.LCD.RGBA(emu.Memory.Get16(gba.VRAM[0] + i*2))
 		c := emu.LCD.Color(r, g+1, b, a)
 		emu.Memory.Set16(gba.VRAM[0]+i*2, c)
 	}

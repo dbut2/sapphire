@@ -55,15 +55,35 @@ func (c *CPU) pcInc() {
 	}
 }
 
+var s = 00000000
+
 func (c *CPU) Step(curr uint32) {
+	vram := ReadMemoryBlock(c.Memory, VRAM)
+	_ = vram
+
+	if curr == 136185940 {
+		fmt.Print()
+	}
+
+	if s == 38222 {
+		fmt.Print()
+	}
+
 	switch c.cpsrState() {
 	case 0:
-		instruction := c.Memory.Access32(curr)
+		instruction := c.Memory.Get32(curr)
+		if s < 100000 {
+			fmt.Printf("%10d %0.32b %0.32b %v\n", curr, instruction, c.CPSR, c.R)
+		}
 		c.Arm(instruction)
 	case 1:
-		instruction := c.Memory.Access16(curr)
+		instruction := c.Memory.Get16(curr)
+		if s < 100000 {
+			fmt.Printf("%10d %0.32b %0.32b %v\n", curr, instruction, c.CPSR, c.R)
+		}
 		c.Thumb(uint32(instruction))
 	}
+	s++
 }
 
 func noins(instruction uint32) {
@@ -406,9 +426,9 @@ func (c *CPU) SWI(comment uint32) {
 		c.R13 = 0x03007F00
 		c.R13_svc = 0x03007FE0
 		c.R13_irq = 0x03007FA0
-		flag := c.Memory.Access8(0x3007FFA)
-		for i := 0x3007E00; i <= 0x3007FFF; i++ {
-			c.Memory[i] = 0
+		flag := c.Memory.Get8(0x3007FFA)
+		for i := uint32(0x3007E00); i <= 0x3007FFF; i++ {
+			c.Memory.Set8(i, 0)
 		}
 		if flag == 0 {
 			c.R[14] = 0x02000000
@@ -429,23 +449,23 @@ func (c *CPU) SWI(comment uint32) {
 		case fill == 0 && datasize == 0:
 			for i := uint32(0); i < count; i++ {
 				offset := i << 1
-				value := c.Memory.Access16(source + offset)
+				value := c.Memory.Get16(source + offset)
 				c.Memory.Set16(destination+offset, value)
 			}
 		case fill == 0 && datasize == 1:
 			for i := uint32(0); i < count; i++ {
 				offset := i << 2
-				value := c.Memory.Access32(source + offset)
+				value := c.Memory.Get32(source + offset)
 				c.Memory.Set32(destination+offset, value)
 			}
 		case fill == 1 && datasize == 0:
-			value := c.Memory.Access16(source)
+			value := c.Memory.Get16(source)
 			for i := uint32(0); i < count; i++ {
 				offset := i << 1
 				c.Memory.Set16(destination+offset, value)
 			}
 		case fill == 1 && datasize == 1:
-			value := c.Memory.Access32(source)
+			value := c.Memory.Get32(source)
 			for i := uint32(0); i < count; i++ {
 				offset := i << 2
 				c.Memory.Set32(destination+offset, value)
