@@ -31,14 +31,6 @@ func main() {
 
 	emu := gba.NewEmu(gamepak)
 
-	go func() {
-		nt := time.NewTicker(time.Second)
-		for {
-			<-nt.C
-			//fmt.Println(gba.ReadMemoryBlock(emu.Memory, gba.VRAM))
-		}
-	}()
-
 	setup := testSetupNone
 	draw := testDrawNone
 
