@@ -24,15 +24,7 @@ func (l LCD) WriteTo(img *image.RGBA) {
 }
 
 func (l LCD) BGMode0WriteTo(img *image.RGBA) {
-	frame := MemoryBlock{0x06000000, 0x06013FFF}
-	for i := 0; i < 240*160; i++ {
-		r, g, b, a := l.RGBA(l.Memory.Get16(frame[0] + uint32(i)*2))
-		img.Pix[i*4+0] = uint8(r<<3 + r>>5)
-		img.Pix[i*4+1] = uint8(g<<3 + g>>5)
-		img.Pix[i*4+2] = uint8(b<<3 + b>>5)
-		img.Pix[i*4+3] = uint8(a * 255)
-	}
-	//panic("unimplemented") // todo
+	panic("unimplemented") // todo
 }
 
 func (l LCD) BGMode1WriteTo(img *image.RGBA) {

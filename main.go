@@ -147,19 +147,16 @@ func testSetup3(emu *gba.Emulator) {
 		for j := 0; j < 160; j++ {
 			index := uint32(i + j*240)
 			c := emu.LCD.Color(uint32(32*i/240), 0, uint32(32*j/160), 1)
-			if (i+j)%2 == 0 {
-				c = 0
-			}
 			emu.Memory.Set16(gba.VRAM[0]+index*2, c)
 		}
 	}
 }
 
 func testDraw3(emu *gba.Emulator) {
-	for i := uint32(0); i < 65536; i++ {
-		r, g, b, a := emu.LCD.RGBA(emu.Memory.Get16(gba.VRAM[0] + i*2))
+	for i := gba.VRAM[0]; i <= gba.VRAM[1]; i += 2 {
+		r, g, b, a := emu.LCD.RGBA(emu.Memory.Get16(i))
 		c := emu.LCD.Color(r, g+1, b, a)
-		emu.Memory.Set16(gba.VRAM[0]+i*2, c)
+		emu.Memory.Set16(i, c)
 	}
 }
 
@@ -177,10 +174,10 @@ func testSetup5(emu *gba.Emulator) {
 }
 
 func testDraw5(emu *gba.Emulator) {
-	for i := uint32(0); i < 65536; i++ {
-		r, g, b, a := emu.LCD.RGBA(emu.Memory.Get16(gba.VRAM[0] + i*2))
+	for i := gba.VRAM[0]; i <= gba.VRAM[1]; i += 2 {
+		r, g, b, a := emu.LCD.RGBA(emu.Memory.Get16(i))
 		c := emu.LCD.Color(r, g+1, b, a)
-		emu.Memory.Set16(gba.VRAM[0]+i*2, c)
+		emu.Memory.Set16(i, c)
 	}
 	gba.SetFlag(emu.Memory, gba.BGFRAME, ^gba.ReadFlag(emu.Memory, gba.BGFRAME))
 }

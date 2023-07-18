@@ -32,9 +32,9 @@ func (c *CPU) Boot() {
 
 func (c *CPU) Run() {
 	for {
-		instruction := c.curr
+		curr := c.curr
 
-		c.Step(instruction)
+		c.Step(curr)
 
 		if !c.flushed {
 			c.curr = c.next
@@ -55,39 +55,19 @@ func (c *CPU) pcInc() {
 	}
 }
 
-var s = 00000000
-
 func (c *CPU) Step(curr uint32) {
-	vram := ReadMemoryBlock(c.Memory, VRAM)
-	_ = vram
-
-	if curr == 136185940 {
-		fmt.Print()
-	}
-
-	if s == 38222 {
-		fmt.Print()
-	}
-
 	switch c.cpsrState() {
 	case 0:
 		instruction := c.Memory.Get32(curr)
-		if s < 100000 {
-			fmt.Printf("%10d %0.32b %0.32b %v\n", curr, instruction, c.CPSR, c.R)
-		}
 		c.Arm(instruction)
 	case 1:
 		instruction := c.Memory.Get16(curr)
-		if s < 100000 {
-			fmt.Printf("%10d %0.32b %0.32b %v\n", curr, instruction, c.CPSR, c.R)
-		}
 		c.Thumb(uint32(instruction))
 	}
-	s++
 }
 
 func noins(instruction uint32) {
-	panic(fmt.Sprintf("nothing to do for: %0.32b", instruction))
+	panic(fmt.Sprintf("nothing to do for: %032b", instruction))
 }
 
 func (c *CPU) prefetchFlush() {
@@ -154,67 +134,67 @@ func (c *CPU) registerAddr(mode uint32, r uint32) *uint32 {
 		6: &c.R6,
 		7: &c.R7,
 		8: map[uint32]*uint32{
-			0x10: &c.R8,
-			0x11: &c.R8_fiq,
-			0x12: &c.R8,
-			0x13: &c.R8,
-			0x17: &c.R8,
-			0x1B: &c.R8,
-			0x1F: &c.R8,
+			USR: &c.R8,
+			FIQ: &c.R8_fiq,
+			IRQ: &c.R8,
+			SVC: &c.R8,
+			ABT: &c.R8,
+			UND: &c.R8,
+			SYS: &c.R8,
 		}[mode],
 		9: map[uint32]*uint32{
-			0x10: &c.R9,
-			0x11: &c.R9_fiq,
-			0x12: &c.R9,
-			0x13: &c.R9,
-			0x17: &c.R9,
-			0x1B: &c.R9,
-			0x1F: &c.R9,
+			USR: &c.R9,
+			FIQ: &c.R9_fiq,
+			IRQ: &c.R9,
+			SVC: &c.R9,
+			ABT: &c.R9,
+			UND: &c.R9,
+			SYS: &c.R9,
 		}[mode],
 		10: map[uint32]*uint32{
-			0x10: &c.R10,
-			0x11: &c.R10_fiq,
-			0x12: &c.R10,
-			0x13: &c.R10,
-			0x17: &c.R10,
-			0x1B: &c.R10,
-			0x1F: &c.R10,
+			USR: &c.R10,
+			FIQ: &c.R10_fiq,
+			IRQ: &c.R10,
+			SVC: &c.R10,
+			ABT: &c.R10,
+			UND: &c.R10,
+			SYS: &c.R10,
 		}[mode],
 		11: map[uint32]*uint32{
-			0x10: &c.R11,
-			0x11: &c.R11_fiq,
-			0x12: &c.R11,
-			0x13: &c.R11,
-			0x17: &c.R11,
-			0x1B: &c.R11,
-			0x1F: &c.R11,
+			USR: &c.R11,
+			FIQ: &c.R11_fiq,
+			IRQ: &c.R11,
+			SVC: &c.R11,
+			ABT: &c.R11,
+			UND: &c.R11,
+			SYS: &c.R11,
 		}[mode],
 		12: map[uint32]*uint32{
-			0x10: &c.R12,
-			0x11: &c.R12_fiq,
-			0x12: &c.R12,
-			0x13: &c.R12,
-			0x17: &c.R12,
-			0x1B: &c.R12,
-			0x1F: &c.R12,
+			USR: &c.R12,
+			FIQ: &c.R12_fiq,
+			IRQ: &c.R12,
+			SVC: &c.R12,
+			ABT: &c.R12,
+			UND: &c.R12,
+			SYS: &c.R12,
 		}[mode],
 		13: map[uint32]*uint32{
-			0x10: &c.R13,
-			0x11: &c.R13_fiq,
-			0x12: &c.R13_irq,
-			0x13: &c.R13_svc,
-			0x17: &c.R13_abt,
-			0x1B: &c.R13_und,
-			0x1F: &c.R13,
+			USR: &c.R13,
+			FIQ: &c.R13_fiq,
+			IRQ: &c.R13_irq,
+			SVC: &c.R13_svc,
+			ABT: &c.R13_abt,
+			UND: &c.R13_und,
+			SYS: &c.R13,
 		}[mode],
 		14: map[uint32]*uint32{
-			0x10: &c.R14,
-			0x11: &c.R14_fiq,
-			0x12: &c.R14_irq,
-			0x13: &c.R14_svc,
-			0x17: &c.R14_abt,
-			0x1B: &c.R14_und,
-			0x1F: &c.R14,
+			USR: &c.R14,
+			FIQ: &c.R14_fiq,
+			IRQ: &c.R14_irq,
+			SVC: &c.R14_svc,
+			ABT: &c.R14_abt,
+			UND: &c.R14_und,
+			SYS: &c.R14,
 		}[mode],
 		15: &c.R15,
 	}[r]
@@ -222,11 +202,11 @@ func (c *CPU) registerAddr(mode uint32, r uint32) *uint32 {
 
 func (c *CPU) spsrAddr(mode uint32) *uint32 {
 	return map[uint32]*uint32{
-		0x11: &c.SPSR_fiq,
-		0x12: &c.SPSR_irq,
-		0x13: &c.SPSR_svc,
-		0x17: &c.SPSR_abt,
-		0x1B: &c.SPSR_und,
+		FIQ: &c.SPSR_fiq,
+		IRQ: &c.SPSR_irq,
+		SVC: &c.SPSR_svc,
+		ABT: &c.SPSR_abt,
+		UND: &c.SPSR_und,
 	}[mode]
 }
 

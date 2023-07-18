@@ -5,6 +5,17 @@ import (
 	"math/bits"
 )
 
+func ReadBits[S Size](v S, bit uint8, size uint8) S {
+	return (v >> bit) & (1<<size - 1)
+}
+
+func SetBits[S Size](v S, bit uint8, size uint8, value S) S {
+	mask := S(1<<size-1) << bit
+	v &= ^mask
+	v |= value << bit
+	return v
+}
+
 func FlagLogic(left, right uint32, value uint64) (N, Z, C, V bool) {
 	N = uint32(value)>>31 == 1
 	Z = uint32(value) == 0
@@ -90,6 +101,12 @@ func signify(value uint32, size uint32) int32 {
 	return int32(value<<shiftValue) >> shiftValue
 }
 
-func setBits(value uint32) uint32 {
+func setBitCount(value uint32) uint32 {
 	return uint32(bits.OnesCount32(value))
 }
+
+const (
+	_ uint32 = 1 << (10 * iota)
+	k
+	m
+)

@@ -2,8 +2,6 @@ package gba
 
 import (
 	_ "embed"
-
-	"github.com/dbut2/sapphire/gba/memory"
 )
 
 //go:embed bios.gba
@@ -11,7 +9,7 @@ var bios []byte
 
 type Motherboard struct {
 	CPU    *CPU
-	Memory memory.Memory
+	Memory Memory
 	LCD    *LCD
 }
 

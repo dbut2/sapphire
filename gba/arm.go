@@ -47,63 +47,63 @@ func (c *CPU) ArmALU(instruction uint32) {
 	void := false
 
 	switch Opcode {
-	case 0x0:
+	case 0b0000:
 		doOp = AND
 		flagger = FlagLogic
 		logic = true
-	case 0x1:
+	case 0b0001:
 		doOp = EOR
 		flagger = FlagLogic
 		logic = true
-	case 0x2:
+	case 0b0010:
 		doOp = SUB
 		flagger = FlagArithSub
-	case 0x3:
+	case 0b0011:
 		doOp = RSB
 		flagger = FlagArithReSub
-	case 0x4:
+	case 0b0100:
 		doOp = ADD
 		flagger = FlagArithAdd
-	case 0x5:
+	case 0b0101:
 		doOp = ADC
 		flagger = FlagArithAdd
-	case 0x6:
+	case 0b0110:
 		doOp = SBCArm
 		flagger = FlagArithSub
-	case 0x7:
+	case 0b0111:
 		doOp = RSC
 		flagger = FlagArithReSub
-	case 0x8:
+	case 0b1000:
 		doOp = TST
 		flagger = FlagLogic
 		logic = true
 		void = true
-	case 0x9:
+	case 0b1001:
 		doOp = TEQ
 		flagger = FlagLogic
 		logic = true
 		void = true
-	case 0xA:
+	case 0b1010:
 		doOp = CMP
 		flagger = FlagArithSub
 		void = true
-	case 0xB:
+	case 0b1011:
 		doOp = CMN
 		flagger = FlagArithAdd
 		void = true
-	case 0xC:
+	case 0b1100:
 		doOp = ORR
 		flagger = FlagLogic
 		logic = true
-	case 0xD:
+	case 0b1101:
 		doOp = MOV
 		flagger = FlagLogic
 		logic = true
-	case 0xE:
+	case 0b1110:
 		doOp = BIC
 		flagger = FlagLogic
 		logic = true
-	case 0xF:
+	case 0b1111:
 		doOp = MVN
 		flagger = FlagLogic
 		logic = true
@@ -161,6 +161,11 @@ func (c *CPU) Arm_Rn(instruction uint32) uint32 {
 	return c.Arm_Rx(instruction, Rn)
 }
 
+func (c *CPU) Arm_Rm(instruction uint32) uint32 {
+	Rm := ReadBits(instruction, 0, 4)
+	return c.Arm_Rx(instruction, Rm)
+}
+
 func (c *CPU) Arm_Rx(instruction uint32, Rx uint32) uint32 {
 	if Rx == 15 {
 		I := ReadBits(instruction, 25, 1)
@@ -170,11 +175,6 @@ func (c *CPU) Arm_Rx(instruction uint32, Rx uint32) uint32 {
 		}
 	}
 	return c.R[Rx]
-}
-
-func (c *CPU) Arm_Rm(instruction uint32) uint32 {
-	Rm := ReadBits(instruction, 0, 4)
-	return c.Arm_Rx(instruction, Rm)
 }
 
 func (c *CPU) Arm_Op2(instruction uint32) uint32 {
@@ -260,10 +260,14 @@ func (c *CPU) ArmShift(shiftType uint32, value, amount uint32, S uint32, I uint3
 }
 
 func (c *CPU) ArmBranch(instruction uint32) {
-	map[uint32]func(uint32){
-		0: c.Arm_B,
-		1: c.Arm_BL,
-	}[ReadBits(instruction, 24, 1)](instruction)
+	Opcode := ReadBits(instruction, 24, 1)
+
+	switch Opcode {
+	case 0:
+		c.Arm_B(instruction)
+	case 1:
+		c.Arm_BL(instruction)
+	}
 
 	c.prefetchFlush()
 }
@@ -280,10 +284,16 @@ func (c *CPU) Arm_BL(instruction uint32) {
 }
 
 func (c *CPU) ArmBranchX(instruction uint32) {
-	map[uint32]func(uint32){
-		0b0001: c.Arm_BX,
-		0b0011: c.Arm_BLX,
-	}[ReadBits(instruction, 4, 4)](instruction)
+	Opcde := ReadBits(instruction, 4, 4)
+
+	switch Opcde {
+	case 0b0001:
+		c.Arm_BX(instruction)
+	case 0b0011:
+		c.Arm_BLX(instruction)
+	default:
+		noins(instruction)
+	}
 
 	c.prefetchFlush()
 }
@@ -488,9 +498,9 @@ func (c *CPU) Arm_LDM(instruction uint32) {
 	if W == 1 {
 		switch U {
 		case 0:
-			c.R[Rn] = oldRn - setBits(Rlist)*4
+			c.R[Rn] = oldRn - setBitCount(Rlist)*4
 		case 1:
-			c.R[Rn] = oldRn + setBits(Rlist)*4
+			c.R[Rn] = oldRn + setBitCount(Rlist)*4
 		}
 	}
 
@@ -557,9 +567,9 @@ func (c *CPU) Arm_STM(instruction uint32) {
 	if W == 1 {
 		switch U {
 		case 0:
-			c.R[Rn] = oldRn - setBits(Rlist)*4
+			c.R[Rn] = oldRn - setBitCount(Rlist)*4
 		case 1:
-			c.R[Rn] = oldRn + setBits(Rlist)*4
+			c.R[Rn] = oldRn + setBitCount(Rlist)*4
 		}
 	}
 
