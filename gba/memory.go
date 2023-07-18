@@ -1,82 +1,128 @@
 package gba
 
-type Memory []byte
+type Memory struct {
+	BIOS    []byte
+	WRAM1   []byte
+	WRAM2   []byte
+	Palette []byte
+	VRAM    []byte
+	OAM     []byte
+	GPROM1  []byte
+	GPROM2  []byte
+	GPROM3  []byte
+	SRAM    []byte
+	IO      []byte
+}
 
 func NewMemory() Memory {
-	return make(Memory, 0x10000000)
-}
-
-func resolveAddress(address uint32) uint32 {
-	if address >= 0xE000000 {
-		address = 0xE000000 | address&0xFFFF
+	return Memory{
+		BIOS:    make([]byte, 16*k),
+		WRAM1:   make([]byte, 256*k),
+		WRAM2:   make([]byte, 32*k),
+		Palette: make([]byte, 1*k),
+		VRAM:    make([]byte, 96*k),
+		OAM:     make([]byte, 1*k),
+		GPROM1:  make([]byte, 32*m),
+		GPROM2:  make([]byte, 32*m),
+		GPROM3:  make([]byte, 32*m),
+		SRAM:    make([]byte, 64*k),
+		IO:      make([]byte, 1*k),
 	}
-	return address
 }
 
-func (m Memory) Access8(address uint32) uint8 {
-	address = resolveAddress(address)
-	address = address & ^uint32(0)
-	v := uint8(m[address])
-	return v
+func (m Memory) addrBlock(address uint32) ([]byte, uint32) {
+	switch {
+	case address <= 0x00003FFF:
+		return m.BIOS[:], 0x00000000
+	case address >= 0x02000000 && address <= 0x02FFFFFF:
+		return m.WRAM1[:], address & ^(256*k - 1)
+	case address >= 0x03000000 && address <= 0x03FFFFFF:
+		return m.WRAM2[:], address & ^(32*k - 1)
+	case address >= 0x05000000 && address <= 0x05FFFFFF:
+		return m.Palette[:], address & ^(1*k - 1)
+	case address >= 0x06000000 && address <= 0x06017FFF:
+		return m.VRAM[:], 0x06000000
+	case address >= 0x07000000 && address <= 0x07FFFFFF:
+		return m.OAM[:], address & ^(64*k - 1)
+	case address >= 0x08000000 && address <= 0x09FFFFFF:
+		return m.GPROM1[:], 0x08000000
+	case address >= 0x0A000000 && address <= 0x0BFFFFFF:
+		return m.GPROM2[:], 0x0A000000
+	case address >= 0x0C000000 && address <= 0x0DFFFFFF:
+		return m.GPROM3[:], 0x0C000000
+	case address >= 0x0E000000:
+		return m.SRAM[:], address & ^(64*k - 1)
+	case address >= 0x04000000 && address <= 0x040003FE: // todo: investigate io
+		return m.IO[:], 0x04000000
+	default:
+		panic(address)
+	}
+}
+
+func (m Memory) addrByte(address uint32) *byte {
+	block, offset := m.addrBlock(address)
+	return &block[address-offset]
+}
+
+func SRAM(addr uint32) bool         { return 0x0e00_0000 <= addr && addr < 0xffff_ffff }
+func SRAMOffset(addr uint32) uint32 { return (addr - 0x0e00_0000) % 0x10000 }
+
+func (m Memory) Get8(address uint32) (value uint8) {
+	return *m.addrByte(address)
 }
 
 func (m Memory) Set8(address uint32, value uint8) {
-	address = resolveAddress(address)
-	address = address & ^uint32(0)
-	m[address] = uint8(value)
+	*m.addrByte(address) = value
 }
 
-func (m Memory) Access16(address uint32) uint16 {
-	address = resolveAddress(address)
-	address = address & ^uint32(1)
-	v := uint16(m[address])
-	v += uint16(m[address+1]) << 8
-	return v
+func (m Memory) Get16(address uint32) (value uint16) {
+	address &= ^uint32(1)
+	value = uint16(*m.addrByte(address))
+	value |= uint16(*m.addrByte(address + 1)) << 8
+	return
 }
 
 func (m Memory) Set16(address uint32, value uint16) {
-	address = resolveAddress(address)
-	address = address & ^uint32(1)
-	m[address] = uint8(value)
-	m[address+1] = uint8(value >> 8)
+	address &= ^uint32(1)
+	*m.addrByte(address) = uint8(value)
+	*m.addrByte(address + 1) = uint8(value >> 8)
 }
 
-func (m Memory) Access32(address uint32) uint32 {
-	address = resolveAddress(address)
-	address = address & ^uint32(3)
-	v := uint32(m[address])
-	v += uint32(m[address+1]) << 8
-	v += uint32(m[address+2]) << 16
-	v += uint32(m[address+3]) << 24
-	return v
+func (m Memory) Get32(address uint32) (value uint32) {
+	address &= ^uint32(1)
+	value = uint32(*m.addrByte(address))
+	value |= uint32(*m.addrByte(address + 1)) << 8
+	value |= uint32(*m.addrByte(address + 2)) << 16
+	value |= uint32(*m.addrByte(address + 3)) << 24
+	return
 }
 
 func (m Memory) Set32(address uint32, value uint32) {
-	address = resolveAddress(address)
-	address = address & ^uint32(3)
-	m[address] = uint8(value)
-	m[address+1] = uint8(value >> 8)
-	m[address+2] = uint8(value >> 16)
-	m[address+3] = uint8(value >> 24)
+	address &= ^uint32(1)
+	*m.addrByte(address) = uint8(value)
+	*m.addrByte(address + 1) = uint8(value >> 8)
+	*m.addrByte(address + 2) = uint8(value >> 16)
+	*m.addrByte(address + 3) = uint8(value >> 24)
 }
 
-func (m Memory) AccessSlice(address uint32, to uint32) []byte {
-	address = resolveAddress(address)
-	to = resolveAddress(to)
-	return m[address : to+1]
+func (m Memory) GetSlice(address uint32, size uint32) (value []byte) {
+	block, offset := m.addrBlock(address)
+	address -= offset
+	return block[address : address+size]
 }
 
 func (m Memory) SetSlice(address uint32, value []byte) {
-	address = resolveAddress(address)
+	block, offset := m.addrBlock(address)
+	address -= offset
 	for i := uint32(0); i < uint32(len(value)); i++ {
-		m[address+i] = value[i]
+		block[address+i] = value[i]
 	}
 }
 
 type MemoryBlock [2]uint32
 
 func ReadMemoryBlock(m Memory, mb MemoryBlock) []byte {
-	return m.AccessSlice(mb[0], mb[1])
+	return m.GetSlice(mb[0], mb[1]-mb[0])
 }
 
 func SetMemoryBlock(m Memory, mb MemoryBlock, value []byte) {
@@ -92,11 +138,11 @@ type Size interface {
 func ReadIORegister[S Size](m Memory, r IORegister[S]) S {
 	switch v := any(*new(S)).(type) {
 	case uint8:
-		return S(m.Access8(uint32(r)))
+		return S(m.Get8(uint32(r)))
 	case uint16:
-		return S(m.Access16(uint32(r)))
+		return S(m.Get16(uint32(r)))
 	case uint32:
-		return S(m.Access32(uint32(r)))
+		return S(m.Get32(uint32(r)))
 	default:
 		panic(v)
 	}
@@ -135,15 +181,4 @@ func ReadFlag[S Size](m Memory, flag IOFlag[S]) S {
 
 func SetFlag[S Size](m Memory, flag IOFlag[S], value S) {
 	SetIORegister(m, flag.Register, SetBits(ReadIORegister(m, flag.Register), flag.Bit, flag.Size, value))
-}
-
-func ReadBits[S Size](v S, bit uint8, size uint8) S {
-	return (v >> bit) & (1<<size - 1)
-}
-
-func SetBits[S Size](v S, bit uint8, size uint8, value S) S {
-	mask := S(1<<size-1) << bit
-	v &= ^mask
-	v |= value << bit
-	return v
 }
