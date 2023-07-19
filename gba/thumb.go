@@ -19,11 +19,9 @@ func (c *CPU) ParseThumb(instruction uint32) func(uint32) {
 		return c.ThumbMemoryPCRel
 	case instruction&0b1111_0010_0000_0000 == 0b0101_0000_0000_0000:
 		return c.ThumbMemoryReg
-	case instruction&0b1111_0010_0000_0000 == 0b0101_0010_0000_0000:
-		return c.ThumbMemorySign
 	case instruction&0b1110_0000_0000_0000 == 0b0110_0000_0000_0000:
 		return c.ThumbMemoryImm
-	case instruction&0b1111_0000_0000_0000 == 0b0101_0000_0000_0000:
+	case instruction&0b1111_0010_0000_0000 == 0b0101_0010_0000_0000:
 		return c.ThumbMemoryHalfSign
 	case instruction&0b1111_0000_0000_0000 == 0b1000_0000_0000_0000:
 		return c.ThumbMemoryHalf
@@ -285,49 +283,31 @@ func (c *CPU) ThumbALU(instruction uint32) {
 }
 
 func (c *CPU) ThumbHiReg(instruction uint32) {
-	map[uint32]func(uint32){
-		0b00: c.Thumb_ADDHi,
-		0b01: c.Thumb_CMPHi,
-		0b10: c.Thumb_MOVHi,
-		0b11: c.ThumbBranchHi,
-	}[ReadBits(instruction, 8, 2)](instruction)
-}
-
-func (c *CPU) Thumb_ADDHi(instruction uint32) { // Rd = Rd+Rs
+	Opcode := ReadBits(instruction, 8, 2)
 	Rd := ReadBits(instruction, 0, 3) + ReadBits(instruction, 7, 1)<<3
 	Rs := ReadBits(instruction, 3, 3) + ReadBits(instruction, 6, 1)<<3
 
-	value := c.R[Rd] + c.R[Rs]
-	if Rd == 15 {
-		value += 4
+	switch Opcode {
+	case 0b00:
+		c.R[Rd] = c.R[Rd] + c.R[Rs]
+		if Rd == 15 {
+			c.prefetchFlush()
+		}
+	case 0b01:
+		value := uint64(c.R[Rd]) - uint64(c.R[Rs])
+		N, Z, C, V := FlagArithSub(c.R[Rd], c.R[Rs], value)
+		c.cpsrSetN(N)
+		c.cpsrSetZ(Z)
+		c.cpsrSetC(C)
+		c.cpsrSetV(V)
+	case 0b10:
+		c.R[Rd] = c.R[Rs]
+		if Rd == 15 {
+			c.prefetchFlush()
+		}
+	case 0b11:
+		c.ThumbBranchHi(instruction)
 	}
-	c.R[Rd] = value
-}
-
-func (c *CPU) Thumb_CMPHi(instruction uint32) { // Void = Rd-Rs
-	Rd := ReadBits(instruction, 0, 3) + ReadBits(instruction, 7, 1)<<3
-	Rs := ReadBits(instruction, 3, 3) + ReadBits(instruction, 6, 1)<<3
-
-	value := c.R[Rd] - c.R[Rs]
-	if Rd == 15 {
-		value += 4
-	}
-	_ = value
-}
-
-func (c *CPU) Thumb_MOVHi(instruction uint32) { // Rd = Rs
-	if instruction == 0b0100_0110_1100_0000 { // NOP
-		return
-	}
-
-	Rd := ReadBits(instruction, 0, 3) + ReadBits(instruction, 7, 1)<<3
-	Rs := ReadBits(instruction, 3, 3) + ReadBits(instruction, 6, 1)<<3
-
-	value := c.R[Rs]
-	if Rd == 15 {
-		value += 4
-	}
-	c.R[Rd] = value
 }
 
 func (c *CPU) ThumbBranchHi(instruction uint32) { // PC = Rs
@@ -484,7 +464,7 @@ func (c *CPU) ThumbMemoryPCRel(instruction uint32) {
 	Rd := ReadBits(instruction, 8, 3)
 	nn := ReadBits(instruction, 0, 8) << 2
 
-	value := c.Memory.Get32(c.R[15] + nn)
+	value := c.Memory.Get32(c.R[15]&^2 + nn)
 	c.R[Rd] = value
 }
 

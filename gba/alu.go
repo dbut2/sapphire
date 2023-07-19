@@ -29,7 +29,7 @@ func SBCArm(left, right, carry uint32) (value uint64) { // value = left - right 
 }
 
 func SBCThumb(left, right, carry uint32) (value uint64) { // value = left - right - NOT carry
-	return uint64(left) - uint64(right) - uint64(^carry)
+	return uint64(left) - uint64(right) - uint64(carry^1)
 }
 
 func RSC(left, right, carry uint32) (value uint64) { // value = right - left + carry - 1

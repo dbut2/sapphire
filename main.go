@@ -3,6 +3,7 @@ package main
 import (
 	_ "embed"
 	"image"
+	"os"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -12,50 +13,85 @@ import (
 	"github.com/dbut2/sapphire/gba"
 )
 
-//go:embed main.gba
-var gamepak []byte
-
 func main() {
 	a := app.New()
-	w := a.NewWindow("Sapphire")
 
 	img := image.NewRGBA(image.Rect(0, 0, 240, 160))
 	cimg := canvas.NewImageFromImage(img)
 	cimg.ScaleMode = canvas.ImageScalePixels
 
-	w.SetContent(cimg)
-	w.Resize(fyne.NewSize(240, 160))
+	win := window{
+		setup:  testSetupNone,
+		draw:   testDrawNone,
+		ticker: time.NewTicker(time.Second / time.Duration(30)),
+		window: a.NewWindow("Sapphire"),
+		img:    img,
+		cimg:   cimg,
+	}
+	win.initEmu()
 
-	fps := 30
-	ticker := time.NewTicker(time.Second / time.Duration(fps))
+	win.window.SetContent(cimg)
+	win.window.Resize(fyne.NewSize(240, 160))
 
-	emu := gba.NewEmu(gamepak)
+	win.run()
 
-	setup := testSetupNone
-	draw := testDrawNone
+	win.selectGame()
 
+	win.window.SetMainMenu(win.defaultMainMenu())
+
+	win.window.ShowAndRun()
+}
+
+type window struct {
+	emu         *gba.Emulator
+	setup, draw func(emu *gba.Emulator)
+	ticker      *time.Ticker
+
+	window fyne.Window
+
+	img  *image.RGBA
+	cimg *canvas.Image
+}
+
+func (w *window) initEmu() {
+	w.emu = gba.NewEmu(w.selectGame())
+}
+
+func (w *window) selectGame() []byte {
+	filename := "sapphire.gba"
+	bytes, err := os.ReadFile(filename)
+	if err != nil {
+		panic(err.Error())
+	}
+	return bytes
+}
+
+func (w *window) run() {
+	go w.emu.CPU.Boot()
 	go func() {
-		setup(emu)
+		w.setup(w.emu)
 		drawing := false
 
 		for {
-			<-ticker.C
+			<-w.ticker.C
 			if drawing {
 				continue
 			}
 			drawing = true
 
-			emu.LCD.WriteTo(img)
-			cimg.Refresh()
+			w.emu.LCD.WriteTo(w.img)
+			w.cimg.Refresh()
 
 			go func() {
-				draw(emu)
+				w.draw(w.emu)
 				drawing = false
 			}()
 		}
 	}()
+}
 
-	w.SetMainMenu(&fyne.MainMenu{
+func (w *window) defaultMainMenu() *fyne.MainMenu {
+	return &fyne.MainMenu{
 		Items: []*fyne.Menu{
 			{
 				Label: "Debug",
@@ -66,19 +102,19 @@ func main() {
 								{
 									Label: "BGMODE3",
 									Action: func() {
-										setup, draw = testSetup3, testDraw3
-										img = image.NewRGBA(image.Rect(0, 0, 240, 160))
-										cimg.Image = img
-										setup(emu)
+										w.setup, w.draw = testSetup3, testDraw3
+										w.img = image.NewRGBA(image.Rect(0, 0, 240, 160))
+										w.cimg.Image = w.img
+										w.setup(w.emu)
 									},
 								},
 								{
 									Label: "BGMODE5",
 									Action: func() {
-										setup, draw = testSetup5, testDraw5
-										img = image.NewRGBA(image.Rect(0, 0, 240, 160))
-										cimg.Image = img
-										setup(emu)
+										w.setup, w.draw = testSetup5, testDraw5
+										w.img = image.NewRGBA(image.Rect(0, 0, 240, 160))
+										w.cimg.Image = w.img
+										w.setup(w.emu)
 									},
 								},
 							},
@@ -91,25 +127,25 @@ func main() {
 								{
 									Label: "1",
 									Action: func() {
-										ticker = time.NewTicker(time.Second / 1)
+										w.ticker = time.NewTicker(time.Second / 1)
 									},
 								},
 								{
 									Label: "30",
 									Action: func() {
-										ticker = time.NewTicker(time.Second / 30)
+										w.ticker = time.NewTicker(time.Second / 30)
 									},
 								},
 								{
 									Label: "120",
 									Action: func() {
-										ticker = time.NewTicker(time.Second / 120)
+										w.ticker = time.NewTicker(time.Second / 120)
 									},
 								},
 								{
 									Label: "1000",
 									Action: func() {
-										ticker = time.NewTicker(time.Second / 1000)
+										w.ticker = time.NewTicker(time.Second / 1000)
 									},
 								},
 							},
@@ -119,10 +155,7 @@ func main() {
 				},
 			},
 		},
-	})
-
-	go emu.CPU.Boot()
-	w.ShowAndRun()
+	}
 }
 
 func testSetupNone(emu *gba.Emulator) {

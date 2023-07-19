@@ -17,22 +17,24 @@ func (c *CPU) ParseArm(instruction uint32) func(instruction uint32) {
 	switch {
 	case instruction&0b0000_1111_1111_1111_1111_1111_0000_0000 == 0b0000_0001_0010_1111_1111_1111_0000_0000:
 		return c.ArmBranchX
-	case instruction&0b0000_1111_0000_0000_0000_0000_0000_0000 == 0b0000_1111_0000_0000_0000_0000_0000_0000:
-		return c.ArmSWI
 	case instruction&0b0000_1101_1001_0000_0000_0000_0000_0000 == 0b0000_0001_0000_0000_0000_0000_0000_0000:
 		return c.ArmPSR
-	case instruction&0b0000_1100_0000_0000_0000_0000_0000_0000 == 0b0000_0000_0000_0000_0000_0000_0000_0000:
-		return c.ArmALU
+	case instruction&0b0000_1111_0000_0000_0000_0000_0000_0000 == 0b0000_1111_0000_0000_0000_0000_0000_0000:
+		return c.ArmSWI
+	case instruction&0b0000_1110_0000_0000_0000_0000_0000_0000 == 0b0000_1000_0000_0000_0000_0000_0000_0000:
+		return c.ArmMemoryBlock
+	case instruction&0b0000_1110_0000_0000_0000_0000_1001_0000 == 0b0000_0000_0000_0000_0000_0000_1001_0000:
+		return c.Arm_MemoryHalf
 	case instruction&0b0000_1110_0000_0000_0000_0000_0000_0000 == 0b0000_1010_0000_0000_0000_0000_0000_0000:
 		return c.ArmBranch
 	case instruction&0b0000_1100_0000_0000_0000_0000_0000_0000 == 0b0000_0100_0000_0000_0000_0000_0000_0000:
 		return c.ArmMemory
-	case instruction&0b0000_1110_0000_0000_0000_0000_0000_0000 == 0b0000_1000_0000_0000_0000_0000_0000_0000:
-		return c.ArmMemoryBlock
 	case instruction&0b0000_1111_0000_0000_0000_0000_0000_0000 == 0b0000_1110_0000_0000_0000_0000_0000_0000,
 		instruction&0b0000_1110_0000_0000_0000_0000_0000_0000 == 0b0000_1100_0000_0000_0000_0000_0000_0000,
 		instruction&0b0000_1111_1110_0000_0000_0000_0000_0000 == 0b0000_1100_0100_0000_0000_0000_0000_0000:
 		return noins
+	case instruction&0b0000_1100_0000_0000_0000_0000_0000_0000 == 0b0000_0000_0000_0000_0000_0000_0000_0000:
+		return c.ArmALU
 	default:
 		return noins
 	}
@@ -582,6 +584,89 @@ func (c *CPU) Arm_STM(instruction uint32) {
 			c.restoreCpsr()
 		}
 
+		c.prefetchFlush()
+	}
+}
+
+func (c *CPU) Arm_MemoryHalf(instruction uint32) {
+	P := ReadBits(instruction, 24, 1)
+	U := ReadBits(instruction, 23, 1)
+	I := ReadBits(instruction, 22, 1)
+	W := ReadBits(instruction, 21, 1)
+	L := ReadBits(instruction, 20, 1)
+	Rn := ReadBits(instruction, 16, 4)
+	Rd := ReadBits(instruction, 12, 4)
+	Opcode := ReadBits(instruction, 5, 2)
+
+	var Offset uint32
+
+	switch I {
+	case 0:
+	case 1:
+
+	}
+	if I == 0 {
+		Rm := ReadBits(instruction, 0, 4)
+		Offset = c.R[Rm]
+	} else {
+		Offset = ReadBits(instruction, 8, 4)<<4 + ReadBits(instruction, 0, 4)
+	}
+
+	if U == 0 {
+		Offset = -Offset
+	}
+	addr := c.R[Rn]
+
+	if P == 1 {
+		addr += Offset
+	}
+
+	setRegisters := map[uint32]bool{}
+
+	switch L {
+	case 0:
+		switch Opcode {
+		case 0b01: // STRH
+			c.Memory.Set16(addr, uint16(c.R[Rd]))
+		case 0b10: // LDRD
+			addr &= ^uint32(8)
+			c.R[Rd] = c.Memory.Get32(addr)
+			c.R[Rd+1] = c.Memory.Get32(addr + 4)
+			setRegisters[Rd] = true
+			setRegisters[Rd+1] = true
+		case 0b11: //STRD
+			addr &= ^uint32(8)
+			c.Memory.Set32(addr, c.R[Rd])
+			c.Memory.Set32(addr+4, c.R[Rd+1])
+		default:
+			noins(instruction)
+		}
+	case 1:
+		switch Opcode {
+		case 0b01:
+			c.R[Rd] = uint32(c.Memory.Get16(addr))
+			setRegisters[Rd] = true
+		case 0b10:
+			c.R[Rd] = uint32(signify(uint32(c.Memory.Get8(addr)), 8))
+			setRegisters[Rd] = true
+		case 0b11:
+			c.R[Rd] = uint32(signify(uint32(c.Memory.Get16(addr)), 16))
+			setRegisters[Rd] = true
+		default:
+			noins(instruction)
+		}
+	}
+
+	if P == 0 {
+		addr += Offset
+	}
+
+	if P == 0 || W == 1 {
+		c.R[Rn] = addr
+		setRegisters[Rn] = true
+	}
+
+	if _, ok := setRegisters[15]; ok {
 		c.prefetchFlush()
 	}
 }
