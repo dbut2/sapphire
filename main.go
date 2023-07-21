@@ -58,7 +58,7 @@ func (w *window) initEmu() {
 }
 
 func (w *window) selectGame() []byte {
-	filename := "sapphire.gba"
+	filename := "main.gba"
 	bytes, err := os.ReadFile(filename)
 	if err != nil {
 		panic(err.Error())

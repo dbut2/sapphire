@@ -84,10 +84,10 @@ func (l LCD) PaletteRGBA(n uint8) (r, g, b, a uint32) {
 func (l LCD) RGBA(d uint16) (r, g, b, a uint32) {
 	c := uint32(d)
 
-	r = c >> 11 & 0b11111
-	g = c >> 6 & 0b11111
-	b = c >> 1 & 0b11111
-	a = c & 0b1
+	r = ReadBits(c, 0, 5)
+	g = ReadBits(c, 5, 5)
+	b = ReadBits(c, 10, 5)
+	a = ReadBits(c, 15, 1)
 
 	return r, g, b, a
 }
