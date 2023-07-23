@@ -10,40 +10,16 @@ type CPU struct {
 
 	curr, next uint32
 	flushed    bool
+
+	cycles uint32
 }
 
 func NewCPU(m *Motherboard) *CPU {
 	return &CPU{Motherboard: m}
 }
 
-func (c *CPU) Boot() {
-	c.R13 = 0x03007F00
-	c.R13_svc = 0x03007FE0
-	c.R13_irq = 0x03007FA0
-
-	c.cpsrInitMode(SYS)
-	c.prefetchFlush()
-
-	SetIORegister(c.Memory, DISPCNT, 0x80)
-	c.exception(0x08)
-
-	c.Run()
-}
-
-func (c *CPU) Run() {
-	for {
-		curr := c.curr
-
-		c.Step(curr)
-
-		if !c.flushed {
-			c.curr = c.next
-			c.next = c.R[15]
-
-			c.pcInc()
-		}
-		c.flushed = false
-	}
+func (c *CPU) cycle(n uint32) {
+	c.cycles += n
 }
 
 func (c *CPU) pcInc() {
@@ -55,15 +31,27 @@ func (c *CPU) pcInc() {
 	}
 }
 
-func (c *CPU) Step(curr uint32) {
+func (c *CPU) Step() {
+	curr := c.curr
+
 	switch c.cpsrState() {
 	case 0:
+		curr &= ^uint32(3)
 		instruction := c.Memory.Get32(curr)
 		c.Arm(instruction)
 	case 1:
+		curr &= ^uint32(1)
 		instruction := c.Memory.Get16(curr)
 		c.Thumb(uint32(instruction))
 	}
+
+	if !c.flushed {
+		c.curr = c.next
+		c.next = c.R[15]
+
+		c.pcInc()
+	}
+	c.flushed = false
 }
 
 func noins(instruction uint32) {

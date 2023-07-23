@@ -9,9 +9,9 @@ var bios []byte
 
 type Motherboard struct {
 	CPU    *CPU
-	Memory Memory
+	Memory *Memory
 	LCD    *LCD
-	DMA    DMAController
+	DMA    *DMAController
 }
 
 func NewMotherboard(gamepak []byte) *Motherboard {
@@ -22,8 +22,8 @@ func NewMotherboard(gamepak []byte) *Motherboard {
 	m.LCD = NewLCD(m)
 	m.DMA = NewDMA(m)
 
-	SetMemoryBlock(m.Memory, BIOS, bios)
-	SetMemoryBlock(m.Memory, GPRom1, gamepak)
+	m.Memory.SetMemoryBlock(BIOS, bios)
+	m.Memory.SetMemoryBlock(GPRom1, gamepak)
 
 	return m
 }

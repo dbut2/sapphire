@@ -4,8 +4,8 @@ type DMAController struct {
 	*Motherboard
 }
 
-func NewDMA(m *Motherboard) DMAController {
-	return DMAController{Motherboard: m}
+func NewDMA(m *Motherboard) *DMAController {
+	return &DMAController{Motherboard: m}
 }
 
 const (

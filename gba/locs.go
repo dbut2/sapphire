@@ -1,18 +1,26 @@
 package gba
 
+type MemoryBlock struct {
+	Start, End uint32
+	Size       uint32
+	Cycles     [3]uint32
+}
+
 var (
-	BIOS    = MemoryBlock{0x00000000, 0x00003FFF}
-	WRAM1   = MemoryBlock{0x02000000, 0x0203FFFF}
-	WRAM2   = MemoryBlock{0x03000000, 0x03007FFF}
-	IOR     = MemoryBlock{0x04000000, 0x040003FE}
-	Palette = MemoryBlock{0x05000000, 0x050003FF}
-	VRAM    = MemoryBlock{0x06000000, 0x06017FFF}
-	OAM     = MemoryBlock{0x07000000, 0x070003FF}
-	GPRom1  = MemoryBlock{0x08000000, 0x09FFFFFF}
-	GPRom2  = MemoryBlock{0x0A000000, 0x0BFFFFFF}
-	GPRom3  = MemoryBlock{0x0C000000, 0x0DFFFFFF}
-	GPSRAM  = MemoryBlock{0x0E000000, 0x0E00FFFF}
+	BIOS    = MemoryBlock{0x00000000, 0x00003FFF, 16 * k, [3]uint32{1, 1, 1}}
+	WRAM1   = MemoryBlock{0x02000000, 0x02FFFFFF, 256 * k, [3]uint32{3, 3, 6}}
+	WRAM2   = MemoryBlock{0x03000000, 0x03FFFFFF, 32 * k, [3]uint32{1, 1, 1}}
+	IOR     = MemoryBlock{0x04000000, 0x040003FE, 0x3FE, [3]uint32{1, 1, 1}}
+	Palette = MemoryBlock{0x05000000, 0x05FFFFFF, 1 * k, [3]uint32{1, 1, 2}}
+	VRAM    = MemoryBlock{0x06000000, 0x06017FFF, 96 * k, [3]uint32{1, 1, 1}}
+	OAM     = MemoryBlock{0x07000000, 0x07FFFFFF, 64 * k, [3]uint32{1, 1, 1}}
+	GPRom1  = MemoryBlock{0x08000000, 0x09FFFFFF, 32 * m, [3]uint32{5, 5, 8}}
+	GPRom2  = MemoryBlock{0x0A000000, 0x0BFFFFFF, 32 * m, [3]uint32{5, 5, 8}}
+	GPRom3  = MemoryBlock{0x0C000000, 0x0DFFFFFF, 32 * m, [3]uint32{5, 5, 8}}
+	GPSRAM  = MemoryBlock{0x0E000000, 0xFFFFFFFF, 64 * k, [3]uint32{5, 5, 5}}
 )
+
+type IORegister[S Size] uint32
 
 const (
 	DISPCNT     = IORegister[uint16](0x4000000)

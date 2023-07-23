@@ -193,6 +193,7 @@ func (c *CPU) Arm_Op2(instruction uint32) uint32 {
 			Is := ReadBits(instruction, 7, 5)
 			return c.ArmShift(st, Rm, Is, S, I)
 		case 1:
+			c.cycle(1)
 			Rs := ReadBits(instruction, 8, 4) & 0b11111111
 			return c.ArmShift(st, Rm, c.R[Rs], S, I)
 		default:

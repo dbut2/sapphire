@@ -9,6 +9,10 @@ func ReadBits[S Size](v S, bit uint8, size uint8) S {
 	return (v >> bit) & (1<<size - 1)
 }
 
+type Size interface {
+	uint8 | uint16 | uint32 | uint64
+}
+
 func SetBits[S Size](v S, bit uint8, size uint8, value S) S {
 	mask := S(1<<size-1) << bit
 	v &= ^mask
@@ -110,3 +114,10 @@ const (
 	k
 	m
 )
+
+func isEqual[S Size](a, b S) S {
+	if a^b == 0 {
+		return 1
+	}
+	return 0
+}

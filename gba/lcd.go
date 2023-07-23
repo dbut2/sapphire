@@ -6,82 +6,109 @@ import (
 
 type LCD struct {
 	*Motherboard
+	img  *image.RGBA
+	draw func()
 }
 
 func NewLCD(m *Motherboard) *LCD {
-	return &LCD{Motherboard: m}
-}
-
-func (l LCD) WriteTo(img *image.RGBA) {
-	map[uint16]func(*image.RGBA){
-		0: l.BGMode0WriteTo,
-		1: l.BGMode1WriteTo,
-		2: l.BGMode2WriteTo,
-		3: l.BGMode3WriteTo,
-		4: l.BGMode4WriteTo,
-		5: l.BGMode5WriteTo,
-	}[ReadFlag(l.Memory, BGMODE)](img)
-}
-
-func (l LCD) BGMode0WriteTo(img *image.RGBA) {
-	panic("unimplemented") // todo
-}
-
-func (l LCD) BGMode1WriteTo(img *image.RGBA) {
-	panic("unimplemented") // todo
-}
-
-func (l LCD) BGMode2WriteTo(img *image.RGBA) {
-	panic("unimplemented") // todo
-}
-
-func (l LCD) BGMode3WriteTo(img *image.RGBA) {
-	frame := MemoryBlock{0x06000000, 0x06013FFF}
-	for i := 0; i < 240*160; i++ {
-		r, g, b, a := l.RGBA(l.Memory.Get16(frame[0] + uint32(i)*2))
-		img.Pix[i*4+0] = uint8(r<<3 + r>>5)
-		img.Pix[i*4+1] = uint8(g<<3 + g>>5)
-		img.Pix[i*4+2] = uint8(b<<3 + b>>5)
-		img.Pix[i*4+3] = uint8(a * 255)
+	return &LCD{
+		Motherboard: m,
 	}
 }
 
-func (l LCD) BGMode4WriteTo(img *image.RGBA) {
-	frame := map[uint16]MemoryBlock{
-		0: {0x06000000, 0x06009FFF},
-		1: {0x0600A000, 0x06013FFF},
-	}[ReadFlag(l.Memory, BGFRAME)]
-	bytes := ReadMemoryBlock(l.Memory, frame)
-	for i := 0; i < 240*160; i++ {
-		r, g, b, a := l.PaletteRGBA(bytes[i])
-		img.Pix[i*4+0] = uint8(r<<3 + r>>5)
-		img.Pix[i*4+1] = uint8(g<<3 + g>>5)
-		img.Pix[i*4+2] = uint8(b<<3 + b>>5)
-		img.Pix[i*4+3] = uint8(a * 255)
+func (l *LCD) SetImage(img *image.RGBA) {
+	l.img = img
+}
+
+func (l *LCD) SetDraw(draw func()) {
+	l.draw = draw
+}
+
+func (l *LCD) DrawFrame() {
+	l.draw()
+}
+
+func (l *LCD) DrawLine(line uint16, blank uint16) {
+	if blank == 1 {
+		l.Blank(line)
+		return
+	}
+
+	map[uint16]func(uint16){
+		0: l.BGMode0Write,
+		1: l.BGMode1Write,
+		2: l.BGMode2Write,
+		3: l.BGMode3Write,
+		4: l.BGMode4Write,
+		5: l.BGMode5Write,
+	}[ReadFlag(l.Memory, BGMODE)](line)
+}
+
+func (l *LCD) Blank(line uint16) {
+	lo := uint32(line) * 160
+	for i := lo; i < lo+240; i++ {
+		l.img.Pix[i*4+0] = 255
+		l.img.Pix[i*4+1] = 255
+		l.img.Pix[i*4+2] = 255
+		l.img.Pix[i*4+3] = 1
 	}
 }
 
-func (l LCD) BGMode5WriteTo(img *image.RGBA) {
-	frame := map[uint16]MemoryBlock{
-		0: {0x06000000, 0x06009FFF},
-		1: {0x0600A000, 0x06013FFF},
-	}[ReadFlag(l.Memory, BGFRAME)]
-	for i := 0; i < 160*128; i++ {
-		index := i + (i/160)*80 + 240*16 + 40
-		r, g, b, a := l.RGBA(l.Memory.Get16(frame[0] + uint32(i)*2))
-		img.Pix[index*4+0] = uint8(r<<3 + r>>5)
-		img.Pix[index*4+1] = uint8(g<<3 + g>>5)
-		img.Pix[index*4+2] = uint8(b<<3 + b>>5)
-		img.Pix[index*4+3] = uint8(a * 255)
+func (l *LCD) BGMode0Write(line uint16) {
+	panic("unimplemented") // todo
+}
+
+func (l *LCD) BGMode1Write(line uint16) {
+	panic("unimplemented") // todo
+}
+
+func (l *LCD) BGMode2Write(line uint16) {
+	panic("unimplemented") // todo
+}
+
+func (l *LCD) BGMode3Write(line uint16) {
+	for i := uint32(0); i < 240; i++ {
+		pixel := uint32(line)*160 + i
+		r, g, b, a := l.RGBA(l.Memory.Get16(VRAM.Start + pixel*2))
+		l.img.Pix[pixel*4+0] = uint8(r<<3 + r>>5)
+		l.img.Pix[pixel*4+1] = uint8(g<<3 + g>>5)
+		l.img.Pix[pixel*4+2] = uint8(b<<3 + b>>5)
+		l.img.Pix[pixel*4+3] = uint8(a * 255)
 	}
 }
 
-func (l LCD) PaletteRGBA(n uint8) (r, g, b, a uint32) {
-	c := l.Memory.Get16(Palette[0] + uint32(n)*2)
+func (l *LCD) BGMode4Write(line uint16) {
+	frame := [2]uint32{0x06000000, 0x0600A000}[ReadFlag(l.Memory, BGFRAME)]
+	bytes := l.Memory.ReadMemoryBlock(VRAM)
+	for i := uint32(0); i < 240*160; i++ {
+		pixel := uint32(line)*160 + i
+		r, g, b, a := l.PaletteRGBA(bytes[frame+pixel])
+		l.img.Pix[pixel*4+0] = uint8(r<<3 + r>>5)
+		l.img.Pix[pixel*4+1] = uint8(g<<3 + g>>5)
+		l.img.Pix[pixel*4+2] = uint8(b<<3 + b>>5)
+		l.img.Pix[pixel*4+3] = uint8(a * 255)
+	}
+}
+
+func (l *LCD) BGMode5Write(line uint16) {
+	frame := [2]uint32{0x06000000, 0x0600A000}[ReadFlag(l.Memory, BGFRAME)]
+	for i := uint32(0); i < 160*128; i++ {
+		pixel := uint32(line)*160 + i
+		index := pixel + (pixel/160)*80 + 240*16 + 40
+		r, g, b, a := l.RGBA(l.Memory.Get16(frame + uint32(pixel)*2))
+		l.img.Pix[index*4+0] = uint8(r<<3 + r>>5)
+		l.img.Pix[index*4+1] = uint8(g<<3 + g>>5)
+		l.img.Pix[index*4+2] = uint8(b<<3 + b>>5)
+		l.img.Pix[index*4+3] = uint8(a * 255)
+	}
+}
+
+func (l *LCD) PaletteRGBA(n uint8) (r, g, b, a uint32) {
+	c := l.Memory.Get16(Palette.Start + uint32(n)*2)
 	return l.RGBA(c)
 }
 
-func (l LCD) RGBA(d uint16) (r, g, b, a uint32) {
+func (l *LCD) RGBA(d uint16) (r, g, b, a uint32) {
 	c := uint32(d)
 
 	r = ReadBits(c, 0, 5)
@@ -92,7 +119,7 @@ func (l LCD) RGBA(d uint16) (r, g, b, a uint32) {
 	return r, g, b, a
 }
 
-func (l LCD) Color(r, g, b, a uint32) uint16 {
+func (l *LCD) Color(r, g, b, a uint32) uint16 {
 	c := (r&31)<<11 + (g&31)<<6 + (b&31)<<1 + a
 	return uint16(c)
 }
