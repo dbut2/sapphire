@@ -3,25 +3,18 @@ package gba
 type Memory struct {
 	*Motherboard
 
-	Blocks map[MemoryBlock][]byte
+	Blocks []BlockData
+}
+
+type BlockData struct {
+	MemoryBlock MemoryBlock
+	Data        []byte
 }
 
 func NewMemory(mm *Motherboard) *Memory {
 	m := &Memory{
 		Motherboard: mm,
-		Blocks:      make(map[MemoryBlock][]byte),
 	}
-
-	blocks := []MemoryBlock{BIOS, WRAM1, WRAM2, IOR, Palette, VRAM, OAM, GPSRAM}
-
-	for _, block := range blocks {
-		m.Blocks[block] = make([]byte, block.Size)
-	}
-
-	GPRom := make([]byte, GPRom1.Size)
-	m.Blocks[GPRom1] = GPRom
-	m.Blocks[GPRom2] = GPRom
-	m.Blocks[GPRom3] = GPRom
 
 	x4000410 := MemoryBlock{
 		Start:  0x4000410,
@@ -29,43 +22,46 @@ func NewMemory(mm *Motherboard) *Memory {
 		Size:   1,
 		Cycles: [3]uint32{1, 1, 1},
 	}
-	m.Blocks[x4000410] = make([]byte, 1)
+	blocks := []MemoryBlock{BIOS, WRAM1, WRAM2, IOR, Palette, VRAM, OAM, GPSRAM, x4000410}
+
+	for _, block := range blocks {
+		m.Blocks = append(m.Blocks, BlockData{block, make([]byte, block.Size)})
+	}
+
+	GPRom := make([]byte, GPRom1.Size)
+	m.Blocks = append(m.Blocks, BlockData{GPRom1, GPRom})
+	m.Blocks = append(m.Blocks, BlockData{GPRom2, GPRom})
+	m.Blocks = append(m.Blocks, BlockData{GPRom3, GPRom})
 
 	return m
 }
 
 func (m Memory) ReadMemoryBlock(mb MemoryBlock) []byte {
-	return m.Blocks[mb]
+	return m.addrBlockData(mb.Start).Data
 }
 
 func (m Memory) SetMemoryBlock(mb MemoryBlock, value []byte) {
-	copy(m.Blocks[mb], value)
+	copy(m.addrBlockData(mb.Start).Data, value)
 }
 
-func (m Memory) addrMemoryBlock(address uint32) MemoryBlock {
-	for mb := range m.Blocks {
-		if address < mb.Start || address > mb.End {
+func (m Memory) addrBlockData(address uint32) BlockData {
+	for _, bd := range m.Blocks {
+		if address < bd.MemoryBlock.Start || address > bd.MemoryBlock.End {
 			continue
 		}
 
-		return mb
+		return bd
 	}
 
 	panic(address)
 }
 
-func (m Memory) addrBlock(address uint32) ([]byte, uint32) {
-	mb := m.addrMemoryBlock(address)
-	return m.Blocks[mb], (address - mb.Start) % mb.Size
+func (m Memory) block(bd BlockData, address uint32) ([]byte, uint32) {
+	return bd.Data, (address - bd.MemoryBlock.Start) % bd.MemoryBlock.Size
 }
 
-func (m Memory) cycle(address uint32, size uint32) {
-	m.CPU.cycle(m.addrMemoryBlock(address).Cycles[size])
-}
-
-func (m Memory) addrByte(address uint32) *byte {
-	block, offset := m.addrBlock(address)
-	return &block[offset]
+func (m Memory) cycle(bd BlockData, size uint32) {
+	m.CPU.cycle(bd.MemoryBlock.Cycles[size])
 }
 
 func (m Memory) checkDMA(address uint32) {
@@ -77,50 +73,63 @@ func (m Memory) checkDMA(address uint32) {
 }
 
 func (m Memory) Get8(address uint32) (value uint8) {
-	m.cycle(address, 0)
-	return *m.addrByte(address)
+	bd := m.addrBlockData(address)
+	m.cycle(bd, 0)
+	block, offset := m.block(bd, address)
+	return block[offset]
 }
 
 func (m Memory) Set8(address uint32, value uint8) {
-	m.cycle(address, 0)
-	defer m.checkDMA(address)
-	*m.addrByte(address) = value
+	bd := m.addrBlockData(address)
+	m.cycle(bd, 0)
+	block, offset := m.block(bd, address)
+	block[offset] = value
+	m.checkDMA(address)
 }
 
 func (m Memory) Get16(address uint32) (value uint16) {
+	bd := m.addrBlockData(address)
 	address &= ^uint32(1)
-	m.cycle(address, 1)
-	value = uint16(*m.addrByte(address))
-	value |= uint16(*m.addrByte(address + 1)) << 8
+	m.cycle(bd, 1)
+	block, offset := m.block(bd, address)
+	value = uint16(block[offset])
+	block2, offset2 := m.block(bd, address+1)
+	value |= uint16(block2[offset2]) << 8
 	return
 }
 
 func (m Memory) Set16(address uint32, value uint16) {
+	bd := m.addrBlockData(address)
 	address &= ^uint32(1)
-	m.cycle(address, 1)
-	defer m.checkDMA(address)
-	*m.addrByte(address) = uint8(value)
-	*m.addrByte(address + 1) = uint8(value >> 8)
+	m.cycle(bd, 1)
+	block, offset := m.block(bd, address)
+	block[offset] = uint8(value)
+	block[offset+1] = uint8(value >> 8)
+	m.checkDMA(address)
 }
 
 func (m Memory) Get32(address uint32) (value uint32) {
+	bd := m.addrBlockData(address)
 	address &= ^uint32(1)
-	m.cycle(address, 2)
-	value = uint32(*m.addrByte(address))
-	value |= uint32(*m.addrByte(address + 1)) << 8
-	value |= uint32(*m.addrByte(address + 2)) << 16
-	value |= uint32(*m.addrByte(address + 3)) << 24
+	m.cycle(bd, 2)
+	block, offset := m.block(bd, address)
+	value = uint32(block[offset])
+	value |= uint32(block[offset+1]) << 8
+	value |= uint32(block[offset+2]) << 16
+	value |= uint32(block[offset+3]) << 24
 	return
 }
 
 func (m Memory) Set32(address uint32, value uint32) {
+	bd := m.addrBlockData(address)
 	address &= ^uint32(1)
-	m.cycle(address, 2)
-	defer m.checkDMA(address)
-	*m.addrByte(address) = uint8(value)
-	*m.addrByte(address + 1) = uint8(value >> 8)
-	*m.addrByte(address + 2) = uint8(value >> 16)
-	*m.addrByte(address + 3) = uint8(value >> 24)
+	m.cycle(bd, 2)
+	block, offset := m.block(bd, address)
+	block[offset] = uint8(value)
+	block[offset+1] = uint8(value >> 8)
+	block[offset+2] = uint8(value >> 16)
+	block[offset+3] = uint8(value >> 24)
+	m.checkDMA(address)
 }
 
 func ReadIORegister[S Size](m *Memory, r IORegister[S]) S {
