@@ -1,54 +1,51 @@
 package gba
 
 func (c *CPU) Thumb(instruction uint32) {
-	do := c.ParseThumb(instruction)
-	do(instruction)
-}
-
-func (c *CPU) ParseThumb(instruction uint32) func(uint32) {
 	switch {
+	case instruction&0b1111_1111_1111_1111 == 0b0000_0000_0000_0000:
+		noins(instruction)
 	case instruction&0b1111_1111_0000_0000 == 0b1101_1111_0000_0000:
-		return c.ThumbSWI
+		c.ThumbSWI(instruction)
 	case instruction&0b1111_1100_0000_0000 == 0b0100_0000_0000_0000:
-		return c.ThumbALU
+		c.ThumbALU(instruction)
 	case instruction&0b1111_1100_0000_0000 == 0b0100_0100_0000_0000:
-		return c.ThumbHiReg
+		c.ThumbHiReg(instruction)
 	case instruction&0b1111_1000_0000_0000 == 0b0001_1000_0000_0000:
-		return c.ThumbAddSub
+		c.ThumbAddSub(instruction)
 	case instruction&0b1111_1000_0000_0000 == 0b0100_1000_0000_0000:
-		return c.ThumbMemoryPCRel
+		c.ThumbMemoryPCRel(instruction)
 	case instruction&0b1111_0010_0000_0000 == 0b0101_0000_0000_0000:
-		return c.ThumbMemoryReg
+		c.ThumbMemoryReg(instruction)
 	case instruction&0b1110_0000_0000_0000 == 0b0110_0000_0000_0000:
-		return c.ThumbMemoryImm
+		c.ThumbMemoryImm(instruction)
 	case instruction&0b1111_0010_0000_0000 == 0b0101_0010_0000_0000:
-		return c.ThumbMemoryHalfSign
+		c.ThumbMemoryHalfSign(instruction)
 	case instruction&0b1111_0000_0000_0000 == 0b1000_0000_0000_0000:
-		return c.ThumbMemoryHalf
+		c.ThumbMemoryHalf(instruction)
 	case instruction&0b1111_0000_0000_0000 == 0b1001_0000_0000_0000:
-		return c.ThumbMemorySPRel
+		c.ThumbMemorySPRel(instruction)
 	case instruction&0b1111_0000_0000_0000 == 0b1010_0000_0000_0000:
-		return c.ThumbMemoryPCSP
+		c.ThumbMemoryPCSP(instruction)
 	case instruction&0b1111_0000_0000_0000 == 0b1100_0000_0000_0000:
-		return c.ThumbMemoryBlock
+		c.ThumbMemoryBlock(instruction)
 	case instruction&0b1110_0000_0000_0000 == 0b0000_0000_0000_0000:
-		return c.ThumbShift
+		c.ThumbShift(instruction)
 	case instruction&0b1110_0000_0000_0000 == 0b0010_0000_0000_0000:
-		return c.ThumbImm
+		c.ThumbImm(instruction)
 	case instruction&0b1111_0000_0000_0000 == 0b1101_0000_0000_0000:
-		return c.ThumbBranchCond
+		c.ThumbBranchCond(instruction)
 	case instruction&0b1111_1000_0000_0000 == 0b1110_0000_0000_0000:
-		return c.ThumbBranchUncond
+		c.ThumbBranchUncond(instruction)
 	case instruction&0b1111_1000_0000_0000 == 0b1111_0000_0000_0000:
-		return c.ThumbBranchLink1
+		c.ThumbBranchLink1(instruction)
 	case instruction&0b1110_1000_0000_0000 == 0b1110_1000_0000_0000:
-		return c.ThumbBranchLink2
+		c.ThumbBranchLink2(instruction)
 	case instruction&0b1111_0110_0000_0000 == 0b1011_0100_0000_0000:
-		return c.ThumbPushPop
+		c.ThumbPushPop(instruction)
 	case instruction&0b1111_1111_0000_0000 == 0b1011_0000_0000_0000:
-		return c.ThumbAddSP
+		c.ThumbAddSP(instruction)
 	default:
-		return noins
+		noins(instruction)
 	}
 }
 

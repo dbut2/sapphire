@@ -9,34 +9,29 @@ func (c *CPU) Arm(instruction uint32) {
 		return
 	}
 
-	do := c.ParseArm(instruction)
-	do(instruction)
-}
-
-func (c *CPU) ParseArm(instruction uint32) func(instruction uint32) {
 	switch {
 	case instruction&0b0000_1111_1111_1111_1111_1111_0000_0000 == 0b0000_0001_0010_1111_1111_1111_0000_0000:
-		return c.ArmBranchX
+		c.ArmBranchX(instruction)
 	case instruction&0b0000_1101_1001_0000_0000_0000_0000_0000 == 0b0000_0001_0000_0000_0000_0000_0000_0000:
-		return c.ArmPSR
+		c.ArmPSR(instruction)
 	case instruction&0b0000_1111_0000_0000_0000_0000_0000_0000 == 0b0000_1111_0000_0000_0000_0000_0000_0000:
-		return c.ArmSWI
+		c.ArmSWI(instruction)
 	case instruction&0b0000_1110_0000_0000_0000_0000_0000_0000 == 0b0000_1000_0000_0000_0000_0000_0000_0000:
-		return c.ArmMemoryBlock
+		c.ArmMemoryBlock(instruction)
 	case instruction&0b0000_1110_0000_0000_0000_0000_1001_0000 == 0b0000_0000_0000_0000_0000_0000_1001_0000:
-		return c.Arm_MemoryHalf
+		c.Arm_MemoryHalf(instruction)
 	case instruction&0b0000_1110_0000_0000_0000_0000_0000_0000 == 0b0000_1010_0000_0000_0000_0000_0000_0000:
-		return c.ArmBranch
+		c.ArmBranch(instruction)
 	case instruction&0b0000_1100_0000_0000_0000_0000_0000_0000 == 0b0000_0100_0000_0000_0000_0000_0000_0000:
-		return c.ArmMemory
+		c.ArmMemory(instruction)
 	case instruction&0b0000_1111_0000_0000_0000_0000_0000_0000 == 0b0000_1110_0000_0000_0000_0000_0000_0000,
 		instruction&0b0000_1110_0000_0000_0000_0000_0000_0000 == 0b0000_1100_0000_0000_0000_0000_0000_0000,
 		instruction&0b0000_1111_1110_0000_0000_0000_0000_0000 == 0b0000_1100_0100_0000_0000_0000_0000_0000:
-		return noins
+		noins(instruction)
 	case instruction&0b0000_1100_0000_0000_0000_0000_0000_0000 == 0b0000_0000_0000_0000_0000_0000_0000_0000:
-		return c.ArmALU
+		c.ArmALU(instruction)
 	default:
-		return noins
+		noins(instruction)
 	}
 }
 

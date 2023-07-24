@@ -58,7 +58,7 @@ func (e *Emulator) scanline(line uint16) {
 
 	blank := ReadBits(ReadIORegister(e.Memory, DISPCNT), 7, 1)
 
-	for e.CPU.cycles = 0; e.CPU.cycles < 1232; {
+	for e.CPU.cycles = e.CPU.cycles % 1232; e.CPU.cycles < 1232; {
 		e.step()
 	}
 

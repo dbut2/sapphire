@@ -277,8 +277,7 @@ func (c *CPU) cpsrN() uint32 {
 }
 
 func (c *CPU) cpsrSetN(value bool) {
-	v := map[bool]uint32{false: 0, true: 1}[value]
-	c.CPSR = SetBits(c.CPSR, 31, 1, v)
+	c.CPSR = SetBits(c.CPSR, 31, 1, bool2uint32(value))
 }
 
 func (c *CPU) cpsrZ() uint32 {
@@ -286,8 +285,7 @@ func (c *CPU) cpsrZ() uint32 {
 }
 
 func (c *CPU) cpsrSetZ(value bool) {
-	v := map[bool]uint32{false: 0, true: 1}[value]
-	c.CPSR = SetBits(c.CPSR, 30, 1, v)
+	c.CPSR = SetBits(c.CPSR, 30, 1, bool2uint32(value))
 }
 
 func (c *CPU) cpsrC() uint32 {
@@ -295,8 +293,7 @@ func (c *CPU) cpsrC() uint32 {
 }
 
 func (c *CPU) cpsrSetC(value bool) {
-	v := map[bool]uint32{false: 0, true: 1}[value]
-	c.CPSR = SetBits(c.CPSR, 29, 1, v)
+	c.CPSR = SetBits(c.CPSR, 29, 1, bool2uint32(value))
 }
 
 func (c *CPU) cpsrV() uint32 {
@@ -304,8 +301,7 @@ func (c *CPU) cpsrV() uint32 {
 }
 
 func (c *CPU) cpsrSetV(value bool) {
-	v := map[bool]uint32{false: 0, true: 1}[value]
-	c.CPSR = SetBits(c.CPSR, 28, 1, v)
+	c.CPSR = SetBits(c.CPSR, 28, 1, bool2uint32(value))
 }
 
 func (c *CPU) exception(vector uint32) {
@@ -399,10 +395,11 @@ func (c *CPU) SWI(comment uint32) {
 			c.Memory.Set8(i, 0)
 		}
 		if flag == 0 {
-			c.R[14] = 0x02000000
-		} else {
 			c.R[14] = 0x08000000
+		} else {
+			c.R[14] = 0x02000000
 		}
+		c.cpsrSetState(0)
 		c.R[15] = c.R[14]
 		c.prefetchFlush()
 		return
