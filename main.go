@@ -8,6 +8,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/canvas"
+	"github.com/dbut2/dialog"
 
 	"github.com/dbut2/sapphire/gba"
 )
@@ -15,7 +16,7 @@ import (
 func main() {
 	a := app.New()
 
-	gamepak := selectGame()
+	gamepak := loadGame()
 
 	win := window{
 		emu:    gba.NewEmu(gamepak),
@@ -47,11 +48,23 @@ func (w *window) Start() {
 	w.window.ShowAndRun()
 }
 
-func selectGame() []byte {
-	filename := "main.gba"
+func loadGame() []byte {
+	filename := selectGame()
 	bytes, err := os.ReadFile(filename)
 	if err != nil {
 		panic(err.Error())
 	}
 	return bytes
+}
+
+func selectGame() string {
+	filename := os.Getenv("game")
+	if filename != "" {
+		return filename
+	}
+	filename, err := dialog.File().Load()
+	if err != nil {
+		panic(err.Error())
+	}
+	return filename
 }

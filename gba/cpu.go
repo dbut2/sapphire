@@ -437,7 +437,47 @@ func (c *CPU) SWI(comment uint32) {
 			}
 		}
 	case RegisterRamReset:
-		c.exception(0x08)
+		clearWram1 := ReadBits(c.R[0], 0, 1)
+		if clearWram1 == 1 {
+			c.Memory.ClearBlock(WRAM1)
+		}
+
+		clearWram2 := ReadBits(c.R[0], 1, 1)
+		if clearWram2 == 1 {
+			c.Memory.ClearBlock(WRAM2)
+		}
+
+		clearPalette := ReadBits(c.R[0], 2, 1)
+		if clearPalette == 1 {
+			c.Memory.ClearBlock(Palette)
+		}
+
+		clearVRAM := ReadBits(c.R[0], 3, 1)
+		if clearVRAM == 1 {
+			c.Memory.ClearBlock(VRAM)
+		}
+
+		clearOAM := ReadBits(c.R[0], 4, 1)
+		if clearOAM == 1 {
+			c.Memory.ClearBlock(OAM)
+		}
+
+		resetSIO := ReadBits(c.R[0], 5, 1)
+		if resetSIO == 1 {
+			// todo
+		}
+
+		resetSound := ReadBits(c.R[0], 6, 1)
+		if resetSound == 1 {
+			// todo
+		}
+
+		resetOther := ReadBits(c.R[0], 7, 1)
+		if resetOther == 1 {
+			// todo
+		}
+
+		SetIORegister(c.Memory, DISPCNT, 0x0080)
 	default:
 		noComment(comment)
 	}

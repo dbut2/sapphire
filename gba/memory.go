@@ -132,6 +132,11 @@ func (m Memory) Set32(address uint32, value uint32) {
 	m.checkDMA(address)
 }
 
+func (m Memory) ClearBlock(mb MemoryBlock) {
+	bd := m.addrBlockData(mb.Start)
+	bd.Data = make([]byte, len(bd.Data))
+}
+
 func ReadIORegister[S Size](m *Memory, r IORegister[S]) S {
 	switch v := any(*new(S)).(type) {
 	case uint8:
