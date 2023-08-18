@@ -45,7 +45,7 @@ func (l *LCD) DrawLine(line uint16, blank uint16) {
 }
 
 func (l *LCD) Blank(line uint16) {
-	lo := uint32(line) * 160
+	lo := uint32(line) * 240
 	for i := lo; i < lo+240; i++ {
 		l.img.Pix[i*4+0] = 255
 		l.img.Pix[i*4+1] = 255

@@ -133,8 +133,7 @@ func (m Memory) Set32(address uint32, value uint32) {
 }
 
 func (m Memory) ClearBlock(mb MemoryBlock) {
-	bd := m.addrBlockData(mb.Start)
-	bd.Data = make([]byte, len(bd.Data))
+	clear(m.addrBlockData(mb.Start).Data)
 }
 
 func ReadIORegister[S Size](m *Memory, r IORegister[S]) S {
