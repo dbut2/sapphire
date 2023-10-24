@@ -10,6 +10,10 @@ build: clean
 	mkdir -p Sapphire.app/Contents/MacOS/
 	cp build/sapphire Sapphire.app/Contents/MacOS/sapphire
 
+.PHONY: run
+run: clean build
+	./Sapphire.app/Contents/MacOS/sapphire
+
 .PHONY: package
 package: build
 	zip -r build/sapphire.zip Sapphire.app

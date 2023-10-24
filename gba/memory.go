@@ -1,5 +1,9 @@
 package gba
 
+import (
+	"fmt"
+)
+
 type Memory struct {
 	*Motherboard
 
@@ -16,13 +20,15 @@ func NewMemory(mm *Motherboard) *Memory {
 		Motherboard: mm,
 	}
 
+	// BIOS writes here
 	x4000410 := MemoryBlock{
 		Start:  0x4000410,
 		End:    0x4000410,
 		Size:   1,
 		Cycles: [3]uint32{1, 1, 1},
 	}
-	blocks := []MemoryBlock{BIOS, WRAM1, WRAM2, IOR, Palette, VRAM, OAM, GPSRAM, x4000410}
+
+	blocks := []MemoryBlock{BIOS, WRAM1, WRAM2, IOR, Palette, VRAM, OAM, x4000410}
 
 	for _, block := range blocks {
 		m.Blocks = append(m.Blocks, BlockData{block, make([]byte, block.Size)})
@@ -32,6 +38,21 @@ func NewMemory(mm *Motherboard) *Memory {
 	m.Blocks = append(m.Blocks, BlockData{GPRom1, GPRom})
 	m.Blocks = append(m.Blocks, BlockData{GPRom2, GPRom})
 	m.Blocks = append(m.Blocks, BlockData{GPRom3, GPRom})
+
+	// GPSRAM mirror allow read/write any size
+	GPSRAM2 := MemoryBlock{
+		Start:  GPSRAM.Start + GPSRAM.Size,
+		End:    GPSRAM.End,
+		Size:   GPSRAM.Size,
+		Reads:  [3]bool{true, true, true},
+		Writes: [3]bool{true, true, true},
+		Cycles: GPSRAM.Cycles,
+	}
+	GPSRAM.End = GPSRAM2.Start - 1
+
+	GPSRAMBlock := make([]byte, GPSRAM.Size)
+	m.Blocks = append(m.Blocks, BlockData{GPSRAM, GPSRAMBlock})
+	m.Blocks = append(m.Blocks, BlockData{GPSRAM2, GPSRAMBlock})
 
 	return m
 }
@@ -74,6 +95,9 @@ func (m Memory) checkDMA(address uint32) {
 
 func (m Memory) Get8(address uint32) (value uint8) {
 	bd := m.addrBlockData(address)
+	if !bd.MemoryBlock.Reads[0] {
+		panic(fmt.Sprintf("cannot read 8 bits from %08X", address))
+	}
 	m.cycle(bd, 0)
 	block, offset := m.block(bd, address)
 	return block[offset]
@@ -81,6 +105,9 @@ func (m Memory) Get8(address uint32) (value uint8) {
 
 func (m Memory) Set8(address uint32, value uint8) {
 	bd := m.addrBlockData(address)
+	if !bd.MemoryBlock.Writes[0] {
+		panic(fmt.Sprintf("cannot write 8 bits to %08X", address))
+	}
 	m.cycle(bd, 0)
 	block, offset := m.block(bd, address)
 	block[offset] = value
@@ -89,6 +116,9 @@ func (m Memory) Set8(address uint32, value uint8) {
 
 func (m Memory) Get16(address uint32) (value uint16) {
 	bd := m.addrBlockData(address)
+	if !bd.MemoryBlock.Reads[1] {
+		panic(fmt.Sprintf("cannot read 16 bits from %08X", address))
+	}
 	address &= ^uint32(1)
 	m.cycle(bd, 1)
 	block, offset := m.block(bd, address)
@@ -100,6 +130,9 @@ func (m Memory) Get16(address uint32) (value uint16) {
 
 func (m Memory) Set16(address uint32, value uint16) {
 	bd := m.addrBlockData(address)
+	if !bd.MemoryBlock.Writes[1] {
+		panic(fmt.Sprintf("cannot write 16 bits to %08X", address))
+	}
 	address &= ^uint32(1)
 	m.cycle(bd, 1)
 	block, offset := m.block(bd, address)
@@ -110,6 +143,9 @@ func (m Memory) Set16(address uint32, value uint16) {
 
 func (m Memory) Get32(address uint32) (value uint32) {
 	bd := m.addrBlockData(address)
+	if !bd.MemoryBlock.Reads[2] {
+		panic(fmt.Sprintf("cannot read 32 bits from %08X", address))
+	}
 	address &= ^uint32(1)
 	m.cycle(bd, 2)
 	block, offset := m.block(bd, address)
@@ -122,6 +158,9 @@ func (m Memory) Get32(address uint32) (value uint32) {
 
 func (m Memory) Set32(address uint32, value uint32) {
 	bd := m.addrBlockData(address)
+	if !bd.MemoryBlock.Writes[2] {
+		panic(fmt.Sprintf("cannot write 32 bits to %08X", address))
+	}
 	address &= ^uint32(1)
 	m.cycle(bd, 2)
 	block, offset := m.block(bd, address)
