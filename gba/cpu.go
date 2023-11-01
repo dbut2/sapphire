@@ -464,16 +464,19 @@ func (c *CPU) SWI(comment uint32) {
 
 		resetSIO := ReadBits(c.R[0], 5, 1)
 		if resetSIO == 1 {
+			_ = ""
 			// todo
 		}
 
 		resetSound := ReadBits(c.R[0], 6, 1)
 		if resetSound == 1 {
+			_ = ""
 			// todo
 		}
 
 		resetOther := ReadBits(c.R[0], 7, 1)
 		if resetOther == 1 {
+			_ = ""
 			// todo
 		}
 

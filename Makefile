@@ -11,7 +11,7 @@ build: clean
 	cp build/sapphire Sapphire.app/Contents/MacOS/sapphire
 
 .PHONY: run
-run: clean build
+run: build
 	./Sapphire.app/Contents/MacOS/sapphire
 
 .PHONY: package

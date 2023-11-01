@@ -12,7 +12,7 @@ var (
 	BIOS    = MemoryBlock{0x00000000, 0x00003FFF, 16 * k, [3]bool{true, true, true}, [3]bool{false, false, false}, [3]uint32{1, 1, 1}}
 	WRAM1   = MemoryBlock{0x02000000, 0x02FFFFFF, 256 * k, [3]bool{true, true, true}, [3]bool{true, true, true}, [3]uint32{3, 3, 6}}
 	WRAM2   = MemoryBlock{0x03000000, 0x03FFFFFF, 32 * k, [3]bool{true, true, true}, [3]bool{true, true, true}, [3]uint32{1, 1, 1}}
-	IOR     = MemoryBlock{0x04000000, 0x040003FE, 0x003FE, [3]bool{true, true, true}, [3]bool{true, true, true}, [3]uint32{1, 1, 1}}
+	IOR     = MemoryBlock{0x04000000, 0x040003FE, 0x3FE, [3]bool{true, true, true}, [3]bool{true, true, true}, [3]uint32{1, 1, 1}}
 	Palette = MemoryBlock{0x05000000, 0x05FFFFFF, 1 * k, [3]bool{true, true, true}, [3]bool{false, true, true}, [3]uint32{1, 1, 2}}
 	VRAM    = MemoryBlock{0x06000000, 0x06017FFF, 96 * k, [3]bool{true, true, true}, [3]bool{false, true, true}, [3]uint32{1, 1, 1}}
 	OAM     = MemoryBlock{0x07000000, 0x07FFFFFF, 64 * k, [3]bool{true, true, true}, [3]bool{false, true, true}, [3]uint32{1, 1, 1}}

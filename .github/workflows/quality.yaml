@@ -7,6 +7,17 @@ on:
   pull_request:
 
 jobs:
+  test:
+    name: Test
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+
+      - run: go test ./...
+
   lint:
     name: Lint
     runs-on: macos-latest
@@ -20,8 +31,8 @@ jobs:
         with:
           args: --timeout=5m
 
-  test:
-    name: Test
+  vet:
+    name: Vet
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v3
@@ -29,4 +40,4 @@ jobs:
         with:
           go-version: '1.21'
 
-      - run: go test ./...
+      - run: go vet ./...
