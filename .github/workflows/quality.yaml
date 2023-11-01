@@ -9,7 +9,7 @@ on:
 jobs:
   test:
     name: Test
-    runs-on: [macos-latest, self-hosted]
+    runs-on: [macos, self-hosted]
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v4
@@ -20,7 +20,7 @@ jobs:
 
   lint:
     name: Lint
-    runs-on: [macos-latest, self-hosted]
+    runs-on: [macos, self-hosted]
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v4
@@ -33,7 +33,7 @@ jobs:
 
   vet:
     name: Vet
-    runs-on: [macos-latest, self-hosted]
+    runs-on: [macos, self-hosted]
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v4
