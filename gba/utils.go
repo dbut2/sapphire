@@ -10,7 +10,7 @@ func ReadBits[S Size](v S, bit uint8, size uint8) S {
 }
 
 type Size interface {
-	uint8 | uint16 | uint32 | uint64
+	uint8 | uint16 | uint32
 }
 
 func SetBits[S Size](v S, bit uint8, size uint8, value S) S {

@@ -22,10 +22,10 @@ func (d DMAController) transfer(timing uint16) {
 	CNT_Hs := [4]IORegister[uint16]{DMA0CNT_H, DMA1CNT_H, DMA2CNT_H, DMA3CNT_H}
 
 	for i := 0; i < 4; i++ {
-		src := ReadIORegister(d.Memory, SADs[i])
-		des := ReadIORegister(d.Memory, DADs[i])
-		cntl := ReadIORegister(d.Memory, CNT_Ls[i])
-		cnth := ReadIORegister(d.Memory, CNT_Hs[i])
+		src := GetIORegister(d.Memory, SADs[i])
+		des := GetIORegister(d.Memory, DADs[i])
+		cntl := GetIORegister(d.Memory, CNT_Ls[i])
+		cnth := GetIORegister(d.Memory, CNT_Hs[i])
 
 		enabled := ReadBits(cnth, 15, 1)
 		cntTiming := ReadBits(cnth, 12, 2)

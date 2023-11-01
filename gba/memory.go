@@ -156,21 +156,23 @@ func (m Memory) ClearBlock(mb MemoryBlock) {
 	clear(m.addrBlockData(mb.Start).Data)
 }
 
-func ReadIORegister[S Size](m *Memory, r IORegister[S]) S {
-	switch v := any(*new(S)).(type) {
+func GetIORegister[S Size](m *Memory, r IORegister[S]) S {
+	v := *new(S)
+	switch t := any(v).(type) {
 	case uint8:
-		return S(m.Get8(uint32(r)))
+		v = S(m.Get8(uint32(r)))
 	case uint16:
-		return S(m.Get16(uint32(r)))
+		v = S(m.Get16(uint32(r)))
 	case uint32:
-		return S(m.Get32(uint32(r)))
+		v = S(m.Get32(uint32(r)))
 	default:
-		panic(v)
+		panic(t)
 	}
+	return v
 }
 
 func SetIORegister[S Size](m *Memory, r IORegister[S], value S) {
-	switch v := any(*new(S)).(type) {
+	switch t := any(value).(type) {
 	case uint8:
 		m.Set8(uint32(r), uint8(value))
 	case uint16:
@@ -178,7 +180,7 @@ func SetIORegister[S Size](m *Memory, r IORegister[S], value S) {
 	case uint32:
 		m.Set32(uint32(r), uint32(value))
 	default:
-		panic(v)
+		panic(t)
 	}
 }
 
@@ -197,9 +199,9 @@ func Flag[S Size](r IORegister[S], bit uint8, size uint8) IOFlag[S] {
 }
 
 func ReadFlag[S Size](m *Memory, flag IOFlag[S]) S {
-	return ReadBits(ReadIORegister(m, flag.Register), flag.Bit, flag.Size)
+	return ReadBits(GetIORegister(m, flag.Register), flag.Bit, flag.Size)
 }
 
 func SetFlag[S Size](m *Memory, flag IOFlag[S], value S) {
-	SetIORegister(m, flag.Register, SetBits(ReadIORegister(m, flag.Register), flag.Bit, flag.Size, value))
+	SetIORegister(m, flag.Register, SetBits(GetIORegister(m, flag.Register), flag.Bit, flag.Size, value))
 }

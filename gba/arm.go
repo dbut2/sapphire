@@ -145,8 +145,8 @@ func (c *CPU) ArmALU(instruction uint32) {
 		c.restoreCpsr()
 
 		cond1 := c.cpsrIRQDisable() == 0
-		cond2 := ReadIORegister(c.Memory, IME) > 0
-		cond3 := ReadIORegister(c.Memory, IE)&ReadIORegister(c.Memory, IF) > 0
+		cond2 := GetIORegister(c.Memory, IME) > 0
+		cond3 := GetIORegister(c.Memory, IE)&GetIORegister(c.Memory, IF) > 0
 		if cond1 && cond2 && cond3 {
 			c.exception(0x18)
 		}
