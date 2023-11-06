@@ -8,7 +8,7 @@ jobs:
   release:
     permissions: write-all
     name: Release
-    runs-on: macos-latest
+    runs-on: [macos, self-hosted]
 
     steps:
       - uses: actions/checkout@v3
