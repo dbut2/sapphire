@@ -12,6 +12,7 @@ type Motherboard struct {
 	Memory *Memory
 	LCD    *LCD
 	DMA    *DMAController
+	Timer  *Timer
 }
 
 func NewMotherboard(gamepak []byte) *Motherboard {
@@ -21,6 +22,7 @@ func NewMotherboard(gamepak []byte) *Motherboard {
 	m.Memory = NewMemory(m)
 	m.LCD = NewLCD(m)
 	m.DMA = NewDMA(m)
+	m.Timer = NewTimer(m)
 
 	m.Memory.SetMemoryBlock(BIOS, bios)
 	m.Memory.SetMemoryBlock(GPRom1, gamepak)

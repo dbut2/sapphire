@@ -37,11 +37,11 @@ func (c *CPU) Step() {
 	switch c.cpsrState() {
 	case 0:
 		curr &= ^uint32(3)
-		instruction := c.Memory.Get32(curr)
+		instruction := c.Memory.Read32(curr, true, false)
 		c.Arm(instruction)
 	case 1:
 		curr &= ^uint32(1)
-		instruction := c.Memory.Get16(curr)
+		instruction := c.Memory.Read16(curr, true, false)
 		c.Thumb(uint32(instruction))
 	}
 
@@ -390,9 +390,9 @@ func (c *CPU) SWI(comment uint32) {
 		c.R13 = 0x03007F00
 		c.R13_svc = 0x03007FE0
 		c.R13_irq = 0x03007FA0
-		flag := c.Memory.Get8(0x3007FFA)
+		flag := c.Memory.Read8(0x3007FFA, true, false)
 		for i := uint32(0x3007E00); i <= 0x3007FFF; i++ {
-			c.Memory.Set8(i, 0)
+			c.Memory.Set8(i, 0, true, false) // todo: replace with clear
 		}
 		if flag == 0 {
 			c.R[14] = 0x08000000
@@ -414,26 +414,26 @@ func (c *CPU) SWI(comment uint32) {
 		case fill == 0 && datasize == 0:
 			for i := uint32(0); i < count; i++ {
 				offset := i << 1
-				value := c.Memory.Get16(source + offset)
-				c.Memory.Set16(destination+offset, value)
+				value := c.Memory.Read16(source+offset, true, false)
+				c.Memory.Set16(destination+offset, value, true, false)
 			}
 		case fill == 0 && datasize == 1:
 			for i := uint32(0); i < count; i++ {
 				offset := i << 2
-				value := c.Memory.Get32(source + offset)
-				c.Memory.Set32(destination+offset, value)
+				value := c.Memory.Read32(source+offset, true, false)
+				c.Memory.Set32(destination+offset, value, true, false)
 			}
 		case fill == 1 && datasize == 0:
-			value := c.Memory.Get16(source)
+			value := c.Memory.Read16(source, true, false)
 			for i := uint32(0); i < count; i++ {
 				offset := i << 1
-				c.Memory.Set16(destination+offset, value)
+				c.Memory.Set16(destination+offset, value, true, false)
 			}
 		case fill == 1 && datasize == 1:
-			value := c.Memory.Get32(source)
+			value := c.Memory.Read32(source, true, false)
 			for i := uint32(0); i < count; i++ {
 				offset := i << 2
-				c.Memory.Set32(destination+offset, value)
+				c.Memory.Set32(destination+offset, value, true, false)
 			}
 		}
 	case RegisterRamReset:

@@ -74,34 +74,53 @@ func (m Memory) checkDMA(address uint32) {
 	m.DMA.transfer(DMAImmediate)
 }
 
-func (m Memory) Get8(address uint32) (value uint8) {
+func (m Memory) setTimer(address uint32, value uint16) bool {
+	switch address {
+	case uint32(TM0CNT_L), uint32(TM1CNT_L), uint32(TM2CNT_L), uint32(TM3CNT_L):
+		m.Timer.set(address, value)
+		return true
+	default:
+		return false
+	}
+}
+
+func (m Memory) Read8(address uint32, cycle bool, forceAddr bool) (value uint8) {
 	bd := m.addrBlockData(address)
 	//if !bd.MemoryBlock.Reads[0] {
 	//	panic(fmt.Sprintf("cannot read 8 bits from %08X", address))
 	//}
-	m.cycle(bd, 0)
+	if cycle {
+		m.cycle(bd, 0)
+	}
 	block, offset := m.block(bd, address)
 	return block[offset]
 }
 
-func (m Memory) Set8(address uint32, value uint8) {
+func (m Memory) Set8(address uint32, value uint8, cycle bool, forceAddr bool) {
 	bd := m.addrBlockData(address)
 	//if !bd.MemoryBlock.Writes[0] {
 	//	panic(fmt.Sprintf("cannot write 8 bits to %08X", address))
 	//}
-	m.cycle(bd, 0)
+	if cycle {
+		m.cycle(bd, 0)
+	}
+	if m.setTimer(address, uint16(value)) {
+		panic("cannot set timer to 8bit")
+	}
 	block, offset := m.block(bd, address)
 	block[offset] = value
 	m.checkDMA(address)
 }
 
-func (m Memory) Get16(address uint32) (value uint16) {
+func (m Memory) Read16(address uint32, cycle bool, forceAddr bool) (value uint16) {
 	bd := m.addrBlockData(address)
 	//if !bd.MemoryBlock.Reads[1] {
 	//	panic(fmt.Sprintf("cannot read 16 bits from %08X", address))
 	//}
 	address &= ^uint32(1)
-	m.cycle(bd, 1)
+	if cycle {
+		m.cycle(bd, 1)
+	}
 	block, offset := m.block(bd, address)
 	value = uint16(block[offset])
 	block2, offset2 := m.block(bd, address+1)
@@ -109,26 +128,33 @@ func (m Memory) Get16(address uint32) (value uint16) {
 	return
 }
 
-func (m Memory) Set16(address uint32, value uint16) {
+func (m Memory) Set16(address uint32, value uint16, cycle bool, forceAddr bool) {
 	bd := m.addrBlockData(address)
 	//if !bd.MemoryBlock.Writes[1] {
 	//	panic(fmt.Sprintf("cannot write 16 bits to %08X", address))
 	//}
 	address &= ^uint32(1)
-	m.cycle(bd, 1)
+	if cycle {
+		m.cycle(bd, 1)
+	}
+	if m.setTimer(address, value) {
+		return
+	}
 	block, offset := m.block(bd, address)
 	block[offset] = uint8(value)
 	block[offset+1] = uint8(value >> 8)
 	m.checkDMA(address)
 }
 
-func (m Memory) Get32(address uint32) (value uint32) {
+func (m Memory) Read32(address uint32, cycle bool, forceAddr bool) (value uint32) {
 	bd := m.addrBlockData(address)
 	//if !bd.MemoryBlock.Reads[2] {
 	//	panic(fmt.Sprintf("cannot read 32 bits from %08X", address))
 	//}
-	address &= ^uint32(1)
-	m.cycle(bd, 2)
+	address &= ^uint32(3)
+	if cycle {
+		m.cycle(bd, 2)
+	}
 	block, offset := m.block(bd, address)
 	value = uint32(block[offset])
 	value |= uint32(block[offset+1]) << 8
@@ -137,13 +163,18 @@ func (m Memory) Get32(address uint32) (value uint32) {
 	return
 }
 
-func (m Memory) Set32(address uint32, value uint32) {
+func (m Memory) Set32(address uint32, value uint32, cycle bool, forceAddr bool) {
 	bd := m.addrBlockData(address)
 	//if !bd.MemoryBlock.Writes[2] {
 	//	panic(fmt.Sprintf("cannot write 32 bits to %08X", address))
 	//}
-	address &= ^uint32(1)
-	m.cycle(bd, 2)
+	address &= ^uint32(3)
+	if cycle {
+		m.cycle(bd, 2)
+	}
+	if m.setTimer(address, uint16(value)) {
+		panic("cannot set timer to 32bit")
+	}
 	block, offset := m.block(bd, address)
 	block[offset] = uint8(value)
 	block[offset+1] = uint8(value >> 8)
@@ -156,15 +187,15 @@ func (m Memory) ClearBlock(mb MemoryBlock) {
 	clear(m.addrBlockData(mb.Start).Data)
 }
 
-func GetIORegister[S Size](m *Memory, r IORegister[S]) S {
+func ReadIORegister[S Size](m *Memory, r IORegister[S]) S {
 	v := *new(S)
 	switch t := any(v).(type) {
 	case uint8:
-		v = S(m.Get8(uint32(r)))
+		v = S(m.Read8(uint32(r), true, true))
 	case uint16:
-		v = S(m.Get16(uint32(r)))
+		v = S(m.Read16(uint32(r), true, true))
 	case uint32:
-		v = S(m.Get32(uint32(r)))
+		v = S(m.Read32(uint32(r), true, true))
 	default:
 		panic(t)
 	}
@@ -174,11 +205,11 @@ func GetIORegister[S Size](m *Memory, r IORegister[S]) S {
 func SetIORegister[S Size](m *Memory, r IORegister[S], value S) {
 	switch t := any(value).(type) {
 	case uint8:
-		m.Set8(uint32(r), uint8(value))
+		m.Set8(uint32(r), uint8(value), true, true)
 	case uint16:
-		m.Set16(uint32(r), uint16(value))
+		m.Set16(uint32(r), uint16(value), true, true)
 	case uint32:
-		m.Set32(uint32(r), uint32(value))
+		m.Set32(uint32(r), uint32(value), true, true)
 	default:
 		panic(t)
 	}
@@ -199,9 +230,9 @@ func Flag[S Size](r IORegister[S], bit uint8, size uint8) IOFlag[S] {
 }
 
 func ReadFlag[S Size](m *Memory, flag IOFlag[S]) S {
-	return ReadBits(GetIORegister(m, flag.Register), flag.Bit, flag.Size)
+	return ReadBits(ReadIORegister(m, flag.Register), flag.Bit, flag.Size)
 }
 
 func SetFlag[S Size](m *Memory, flag IOFlag[S], value S) {
-	SetIORegister(m, flag.Register, SetBits(GetIORegister(m, flag.Register), flag.Bit, flag.Size, value))
+	SetIORegister(m, flag.Register, SetBits(ReadIORegister(m, flag.Register), flag.Bit, flag.Size, value))
 }

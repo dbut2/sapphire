@@ -69,7 +69,7 @@ func (l *LCD) BGMode2Write(line uint16) {
 func (l *LCD) BGMode3Write(line uint16) {
 	for i := uint32(0); i < 240; i++ {
 		pixel := uint32(line)*160 + i
-		r, g, b, a := l.RGBA(l.Memory.Get16(VRAM.Start + pixel*2))
+		r, g, b, a := l.RGBA(l.Memory.Read16(VRAM.Start+pixel*2, false, false))
 		l.img.Pix[pixel*4+0] = uint8(r<<3 + r>>5)
 		l.img.Pix[pixel*4+1] = uint8(g<<3 + g>>5)
 		l.img.Pix[pixel*4+2] = uint8(b<<3 + b>>5)
@@ -95,7 +95,7 @@ func (l *LCD) BGMode5Write(line uint16) {
 	for i := uint32(0); i < 160*128; i++ {
 		pixel := uint32(line)*160 + i
 		index := pixel + (pixel/160)*80 + 240*16 + 40
-		r, g, b, a := l.RGBA(l.Memory.Get16(frame + uint32(pixel)*2))
+		r, g, b, a := l.RGBA(l.Memory.Read16(frame+uint32(pixel)*2, false, false))
 		l.img.Pix[index*4+0] = uint8(r<<3 + r>>5)
 		l.img.Pix[index*4+1] = uint8(g<<3 + g>>5)
 		l.img.Pix[index*4+2] = uint8(b<<3 + b>>5)
@@ -104,7 +104,7 @@ func (l *LCD) BGMode5Write(line uint16) {
 }
 
 func (l *LCD) PaletteRGBA(n uint8) (r, g, b, a uint32) {
-	c := l.Memory.Get16(Palette.Start + uint32(n)*2)
+	c := l.Memory.Read16(Palette.Start+uint32(n)*2, false, false)
 	return l.RGBA(c)
 }
 

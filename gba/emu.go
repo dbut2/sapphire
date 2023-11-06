@@ -45,7 +45,7 @@ func (e *Emulator) frame() {
 func (e *Emulator) scanline(line uint16) {
 	SetIORegister(e.Memory, VCOUNT, line)
 
-	dispstat := GetIORegister(e.Memory, DISPSTAT)
+	dispstat := ReadIORegister(e.Memory, DISPSTAT)
 
 	VBlank := (159 - (line % 227)) >> 15 // 0: 0-159, 1: 160-226, 0: 227
 	LYC := ReadBits(dispstat, 8, 8)
@@ -56,7 +56,7 @@ func (e *Emulator) scanline(line uint16) {
 
 	SetIORegister(e.Memory, DISPSTAT, dispstat)
 
-	blank := ReadBits(GetIORegister(e.Memory, DISPCNT), 7, 1)
+	blank := ReadBits(ReadIORegister(e.Memory, DISPCNT), 7, 1)
 
 	for e.CPU.cycles = e.CPU.cycles % 1232; e.CPU.cycles < 1232; {
 		e.step()
@@ -68,10 +68,14 @@ func (e *Emulator) scanline(line uint16) {
 }
 
 func (e *Emulator) step() {
-	dispstat := GetIORegister(e.Memory, DISPSTAT)
+	dispstat := ReadIORegister(e.Memory, DISPSTAT)
 	HBlank := (1005 - e.CPU.cycles) >> 31 // 0: 0-1005, 1: 1006-1231
 	dispstat = SetBits(dispstat, 1, 1, uint16(HBlank))
 	SetIORegister(e.Memory, DISPSTAT, dispstat)
 
+	preCount := e.CPU.cycles
 	e.CPU.Step()
+	postCount := e.CPU.cycles
+
+	e.Timer.Tick(preCount, postCount)
 }

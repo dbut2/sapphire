@@ -145,8 +145,8 @@ func (c *CPU) ArmALU(instruction uint32) {
 		c.restoreCpsr()
 
 		cond1 := c.cpsrIRQDisable() == 0
-		cond2 := GetIORegister(c.Memory, IME) > 0
-		cond3 := GetIORegister(c.Memory, IE)&GetIORegister(c.Memory, IF) > 0
+		cond2 := ReadIORegister(c.Memory, IME) > 0
+		cond3 := ReadIORegister(c.Memory, IE)&ReadIORegister(c.Memory, IF) > 0
 		if cond1 && cond2 && cond3 {
 			c.exception(0x18)
 		}
@@ -410,15 +410,15 @@ func (c *CPU) ArmMemory(instruction uint32) {
 
 	if L == 1 {
 		if B == 1 {
-			c.R[Rd] = uint32(c.Memory.Get8(addr))
+			c.R[Rd] = uint32(c.Memory.Read8(addr, true, false))
 		} else {
-			c.R[Rd] = c.Memory.Get32(addr)
+			c.R[Rd] = c.Memory.Read32(addr, true, false)
 		}
 	} else {
 		if B == 1 {
-			c.Memory.Set8(addr, uint8(c.R[Rd]))
+			c.Memory.Set8(addr, uint8(c.R[Rd]), true, false)
 		} else {
-			c.Memory.Set32(addr, c.R[Rd])
+			c.Memory.Set32(addr, c.R[Rd], true, false)
 		}
 	}
 
@@ -466,7 +466,7 @@ func (c *CPU) Arm_LDM(instruction uint32) {
 	case P == 0 && U == 0: // DA
 		for i := 15; i >= 0; i-- {
 			if (Rlist>>i)&1 == 1 {
-				c.R[i] = c.Memory.Get32(address)
+				c.R[i] = c.Memory.Read32(address, true, false)
 				address -= 4
 			}
 		}
@@ -474,13 +474,13 @@ func (c *CPU) Arm_LDM(instruction uint32) {
 		for i := 15; i >= 0; i-- {
 			if (Rlist>>i)&1 == 1 {
 				address -= 4
-				c.R[i] = c.Memory.Get32(address)
+				c.R[i] = c.Memory.Read32(address, true, false)
 			}
 		}
 	case P == 0 && U == 1: // IA
 		for i := 0; i <= 15; i++ {
 			if (Rlist>>i)&1 == 1 {
-				c.R[i] = c.Memory.Get32(address)
+				c.R[i] = c.Memory.Read32(address, true, false)
 				address += 4
 			}
 		}
@@ -488,7 +488,7 @@ func (c *CPU) Arm_LDM(instruction uint32) {
 		for i := 0; i <= 15; i++ {
 			if (Rlist>>i)&1 == 1 {
 				address += 4
-				c.R[i] = c.Memory.Get32(address)
+				c.R[i] = c.Memory.Read32(address, true, false)
 			}
 		}
 	}
@@ -535,7 +535,7 @@ func (c *CPU) Arm_STM(instruction uint32) {
 	case P == 0 && U == 0: // DA
 		for i := 15; i >= 0; i-- {
 			if (Rlist>>i)&1 == 1 {
-				c.Memory.Set32(address, c.R[i])
+				c.Memory.Set32(address, c.R[i], true, false)
 				address -= 4
 			}
 		}
@@ -543,13 +543,13 @@ func (c *CPU) Arm_STM(instruction uint32) {
 		for i := 15; i >= 0; i-- {
 			if (Rlist>>i)&1 == 1 {
 				address -= 4
-				c.Memory.Set32(address, c.R[i])
+				c.Memory.Set32(address, c.R[i], true, false)
 			}
 		}
 	case P == 0 && U == 1: // IA
 		for i := 0; i <= 15; i++ {
 			if (Rlist>>i)&1 == 1 {
-				c.Memory.Set32(address, c.R[i])
+				c.Memory.Set32(address, c.R[i], true, false)
 				address += 4
 			}
 		}
@@ -557,7 +557,7 @@ func (c *CPU) Arm_STM(instruction uint32) {
 		for i := 0; i <= 15; i++ {
 			if (Rlist>>i)&1 == 1 {
 				address += 4
-				c.Memory.Set32(address, c.R[i])
+				c.Memory.Set32(address, c.R[i], true, false)
 			}
 		}
 	}
@@ -623,30 +623,30 @@ func (c *CPU) Arm_MemoryHalf(instruction uint32) {
 	case 0:
 		switch Opcode {
 		case 0b01: // STRH
-			c.Memory.Set16(addr, uint16(c.R[Rd]))
+			c.Memory.Set16(addr, uint16(c.R[Rd]), true, false)
 		case 0b10: // LDRD
 			addr &= ^uint32(8)
-			c.R[Rd] = c.Memory.Get32(addr)
-			c.R[Rd+1] = c.Memory.Get32(addr + 4)
+			c.R[Rd] = c.Memory.Read32(addr, true, false)
+			c.R[Rd+1] = c.Memory.Read32(addr+4, true, false)
 			setRegisters[Rd] = true
 			setRegisters[Rd+1] = true
 		case 0b11: //STRD
 			addr &= ^uint32(8)
-			c.Memory.Set32(addr, c.R[Rd])
-			c.Memory.Set32(addr+4, c.R[Rd+1])
+			c.Memory.Set32(addr, c.R[Rd], true, false)
+			c.Memory.Set32(addr+4, c.R[Rd+1], true, false)
 		default:
 			noins(instruction)
 		}
 	case 1:
 		switch Opcode {
 		case 0b01:
-			c.R[Rd] = uint32(c.Memory.Get16(addr))
+			c.R[Rd] = uint32(c.Memory.Read16(addr, true, false))
 			setRegisters[Rd] = true
 		case 0b10:
-			c.R[Rd] = uint32(signify(uint32(c.Memory.Get8(addr)), 8))
+			c.R[Rd] = uint32(signify(uint32(c.Memory.Read8(addr, true, false)), 8))
 			setRegisters[Rd] = true
 		case 0b11:
-			c.R[Rd] = uint32(signify(uint32(c.Memory.Get16(addr)), 16))
+			c.R[Rd] = uint32(signify(uint32(c.Memory.Read16(addr, true, false)), 16))
 			setRegisters[Rd] = true
 		default:
 			noins(instruction)

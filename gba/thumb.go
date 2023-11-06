@@ -405,12 +405,12 @@ func (c *CPU) ThumbPush(instruction uint32) {
 
 	if Lr == 1 {
 		c.R[13] -= 4
-		c.Memory.Set32(c.R[13], c.R[14])
+		c.Memory.Set32(c.R[13], c.R[14], true, false)
 	}
 	for i := 7; i >= 0; i-- {
 		if Rlist>>i&1 == 1 {
 			c.R[13] -= 4
-			c.Memory.Set32(c.R[13], c.R[i])
+			c.Memory.Set32(c.R[13], c.R[i], true, false)
 		}
 	}
 }
@@ -421,12 +421,12 @@ func (c *CPU) ThumbPop(instruction uint32) {
 
 	for i := 0; i <= 7; i++ {
 		if Rlist>>i&1 == 1 {
-			c.R[i] = c.Memory.Get32(c.R[13])
+			c.R[i] = c.Memory.Read32(c.R[13], true, false)
 			c.R[13] += 4
 		}
 	}
 	if Lr == 1 {
-		c.R[15] = c.Memory.Get32(c.R[13])
+		c.R[15] = c.Memory.Read32(c.R[13], true, false)
 		c.R[13] += 4
 		c.prefetchFlush()
 	}
@@ -439,9 +439,9 @@ func (c *CPU) ThumbMemorySPRel(instruction uint32) {
 
 	switch Opcode {
 	case 0:
-		c.Memory.Set32(c.R[13]+nn, c.R[Rd])
+		c.Memory.Set32(c.R[13]+nn, c.R[Rd], true, false)
 	case 1:
-		c.R[Rd] = c.Memory.Get32(c.R[13] + nn)
+		c.R[Rd] = c.Memory.Read32(c.R[13]+nn, true, false)
 	}
 }
 
@@ -461,7 +461,7 @@ func (c *CPU) ThumbMemoryPCRel(instruction uint32) {
 	Rd := ReadBits(instruction, 8, 3)
 	nn := ReadBits(instruction, 0, 8) << 2
 
-	value := c.Memory.Get32(c.R[15]&^2 + nn)
+	value := c.Memory.Read32(c.R[15]&^2+nn, true, false)
 	c.R[Rd] = value
 }
 
@@ -480,7 +480,7 @@ func (c *CPU) Thumb_STR(instruction uint32) {
 	Ro := ReadBits(instruction, 6, 3)
 
 	value := c.R[Rd]
-	c.Memory.Set32(c.R[Rb]+c.R[Ro], value)
+	c.Memory.Set32(c.R[Rb]+c.R[Ro], value, true, false)
 }
 
 func (c *CPU) Thumb_STRB(instruction uint32) {
@@ -489,7 +489,7 @@ func (c *CPU) Thumb_STRB(instruction uint32) {
 	Ro := ReadBits(instruction, 6, 3)
 
 	value := uint8(c.R[Rd])
-	c.Memory.Set8(c.R[Rb]+c.R[Ro], value)
+	c.Memory.Set8(c.R[Rb]+c.R[Ro], value, true, false)
 }
 
 func (c *CPU) Thumb_LDR(instruction uint32) {
@@ -497,7 +497,7 @@ func (c *CPU) Thumb_LDR(instruction uint32) {
 	Rb := ReadBits(instruction, 3, 3)
 	Ro := ReadBits(instruction, 6, 3)
 
-	value := c.Memory.Get32(c.R[Rb] + c.R[Ro])
+	value := c.Memory.Read32(c.R[Rb]+c.R[Ro], true, false)
 	c.R[Rd] = value
 }
 
@@ -506,7 +506,7 @@ func (c *CPU) Thumb_LDRB(instruction uint32) {
 	Rb := ReadBits(instruction, 3, 3)
 	Ro := ReadBits(instruction, 6, 3)
 
-	value := uint32(c.Memory.Get8(c.R[Rb] + c.R[Ro]))
+	value := uint32(c.Memory.Read8(c.R[Rb]+c.R[Ro], true, false))
 	c.R[Rd] = value
 }
 
@@ -519,15 +519,15 @@ func (c *CPU) ThumbMemoryImm(instruction uint32) {
 	switch Opcode {
 	case 0b00: // STR
 		nn <<= 2
-		c.Memory.Set32(c.R[Rb]+nn, c.R[Rd])
+		c.Memory.Set32(c.R[Rb]+nn, c.R[Rd], true, false)
 	case 0b01: // LDR
 		nn <<= 2
-		value := c.Memory.Get32(c.R[Rb] + nn)
+		value := c.Memory.Read32(c.R[Rb]+nn, true, false)
 		c.R[Rd] = value
 	case 0b10: // STRB
-		c.Memory.Set8(c.R[Rb]+nn, uint8(c.R[Rd]))
+		c.Memory.Set8(c.R[Rb]+nn, uint8(c.R[Rd]), true, false)
 	case 0b11: // LDRB
-		c.R[Rd] = uint32(c.Memory.Get8(c.R[Rb] + nn))
+		c.R[Rd] = uint32(c.Memory.Read8(c.R[Rb]+nn, true, false))
 	}
 }
 
@@ -554,14 +554,14 @@ func (c *CPU) ThumbMemoryBlock(instruction uint32) {
 	case 0b0:
 		for i := 0; i <= 7; i++ {
 			if (Rlist>>i)&1 == 1 {
-				c.Memory.Set32(c.R[Rb], c.R[i])
+				c.Memory.Set32(c.R[Rb], c.R[i], true, false)
 				c.R[Rb] += 4
 			}
 		}
 	case 0b1:
 		for i := 0; i <= 7; i++ {
 			if (Rlist>>i)&1 == 1 {
-				c.R[i] = c.Memory.Get32(c.R[Rb])
+				c.R[i] = c.Memory.Read32(c.R[Rb], true, false)
 				c.R[Rb] += 4
 			}
 		}
@@ -580,13 +580,13 @@ func (c *CPU) ThumbMemoryHalfSign(instruction uint32) {
 
 	switch Opcode {
 	case 0b00: // STRH
-		c.Memory.Set16(c.R[Rb]+c.R[Ro], uint16(c.R[Rd]))
+		c.Memory.Set16(c.R[Rb]+c.R[Ro], uint16(c.R[Rd]), true, false)
 	case 0b01: // LDSB
-		c.R[Rd] = uint32(signify(uint32(c.Memory.Get8(c.R[Rb]+c.R[Ro])), 8))
+		c.R[Rd] = uint32(signify(uint32(c.Memory.Read8(c.R[Rb]+c.R[Ro], true, false)), 8))
 	case 0b10: // LDRH
-		c.R[Rd] = uint32(c.Memory.Get16(c.R[Rb] + c.R[Ro]))
+		c.R[Rd] = uint32(c.Memory.Read16(c.R[Rb]+c.R[Ro], true, false))
 	case 0b11: // LDSH
-		c.R[Rd] = uint32(signify(uint32(c.Memory.Get16(c.R[Rb]+c.R[Ro])), 16))
+		c.R[Rd] = uint32(signify(uint32(c.Memory.Read16(c.R[Rb]+c.R[Ro], true, false)), 16))
 	}
 }
 
@@ -598,8 +598,8 @@ func (c *CPU) ThumbMemoryHalf(instruction uint32) {
 
 	switch Opcode {
 	case 0b0: // STRH
-		c.Memory.Set16(c.R[Rb]+nn, uint16(c.R[Rd]))
+		c.Memory.Set16(c.R[Rb]+nn, uint16(c.R[Rd]), true, false)
 	case 0b1: // LDRH
-		c.R[Rd] = uint32(c.Memory.Get16(c.R[Rb] + nn))
+		c.R[Rd] = uint32(c.Memory.Read16(c.R[Rb]+nn, true, false))
 	}
 }
