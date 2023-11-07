@@ -77,5 +77,5 @@ func (e *Emulator) step() {
 	e.CPU.Step()
 	postCount := e.CPU.cycles
 
-	e.Timer.Tick(preCount, postCount)
+	e.Timer.Tick(postCount - preCount)
 }

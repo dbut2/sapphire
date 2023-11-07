@@ -38,15 +38,15 @@ func NewMemory(mm *Motherboard) *Memory {
 	return m
 }
 
-func (m Memory) ReadMemoryBlock(mb MemoryBlock) []byte {
+func (m *Memory) ReadMemoryBlock(mb MemoryBlock) []byte {
 	return m.addrBlockData(mb.Start).Data
 }
 
-func (m Memory) SetMemoryBlock(mb MemoryBlock, value []byte) {
+func (m *Memory) SetMemoryBlock(mb MemoryBlock, value []byte) {
 	copy(m.addrBlockData(mb.Start).Data, value)
 }
 
-func (m Memory) addrBlockData(address uint32) BlockData {
+func (m *Memory) addrBlockData(address uint32) BlockData {
 	for _, bd := range m.Blocks {
 		if address < bd.MemoryBlock.Start || address > bd.MemoryBlock.End {
 			continue
@@ -58,15 +58,15 @@ func (m Memory) addrBlockData(address uint32) BlockData {
 	panic(address)
 }
 
-func (m Memory) block(bd BlockData, address uint32) ([]byte, uint32) {
+func (m *Memory) block(bd BlockData, address uint32) ([]byte, uint32) {
 	return bd.Data, (address - bd.MemoryBlock.Start) % bd.MemoryBlock.Size
 }
 
-func (m Memory) cycle(bd BlockData, size uint32) {
+func (m *Memory) cycle(bd BlockData, size uint32) {
 	m.CPU.cycle(bd.MemoryBlock.Cycles[size])
 }
 
-func (m Memory) checkDMA(address uint32) {
+func (m *Memory) checkDMA(address uint32) {
 	if address < 0x040000B0 || address > 0x040000DF {
 		return
 	}
@@ -74,17 +74,32 @@ func (m Memory) checkDMA(address uint32) {
 	m.DMA.transfer(DMAImmediate)
 }
 
-func (m Memory) setTimer(address uint32, value uint16) bool {
+func (m *Memory) setTimerL(address uint32, value uint16, forceAddr bool) bool {
+	if !forceAddr {
+		return false
+	}
 	switch address {
 	case uint32(TM0CNT_L), uint32(TM1CNT_L), uint32(TM2CNT_L), uint32(TM3CNT_L):
-		m.Timer.set(address, value)
+		m.Timer.Set(address, value)
 		return true
 	default:
 		return false
 	}
 }
 
-func (m Memory) Read8(address uint32, cycle bool, forceAddr bool) (value uint8) {
+func (m *Memory) checkTimerH(address uint32, value uint16) {
+	switch address {
+	case uint32(TM0CNT_H), uint32(TM1CNT_H), uint32(TM2CNT_H), uint32(TM3CNT_H):
+		prevState := ReadBits(m.Read16(address, false, true), 7, 1)
+		currState := ReadBits(value, 7, 1)
+
+		if prevState == 0 && currState == 1 {
+			m.Timer.Reload(address)
+		}
+	}
+}
+
+func (m *Memory) Read8(address uint32, cycle bool, forceAddr bool) (value uint8) {
 	bd := m.addrBlockData(address)
 	//if !bd.MemoryBlock.Reads[0] {
 	//	panic(fmt.Sprintf("cannot read 8 bits from %08X", address))
@@ -96,7 +111,7 @@ func (m Memory) Read8(address uint32, cycle bool, forceAddr bool) (value uint8) 
 	return block[offset]
 }
 
-func (m Memory) Set8(address uint32, value uint8, cycle bool, forceAddr bool) {
+func (m *Memory) Set8(address uint32, value uint8, cycle bool, forceAddr bool) {
 	bd := m.addrBlockData(address)
 	//if !bd.MemoryBlock.Writes[0] {
 	//	panic(fmt.Sprintf("cannot write 8 bits to %08X", address))
@@ -104,15 +119,16 @@ func (m Memory) Set8(address uint32, value uint8, cycle bool, forceAddr bool) {
 	if cycle {
 		m.cycle(bd, 0)
 	}
-	if m.setTimer(address, uint16(value)) {
-		panic("cannot set timer to 8bit")
+	if m.setTimerL(address, uint16(value), forceAddr) {
+		panic("cannot Set timer to 8bit")
 	}
+	m.checkTimerH(address, uint16(value))
 	block, offset := m.block(bd, address)
 	block[offset] = value
 	m.checkDMA(address)
 }
 
-func (m Memory) Read16(address uint32, cycle bool, forceAddr bool) (value uint16) {
+func (m *Memory) Read16(address uint32, cycle bool, forceAddr bool) (value uint16) {
 	bd := m.addrBlockData(address)
 	//if !bd.MemoryBlock.Reads[1] {
 	//	panic(fmt.Sprintf("cannot read 16 bits from %08X", address))
@@ -128,7 +144,7 @@ func (m Memory) Read16(address uint32, cycle bool, forceAddr bool) (value uint16
 	return
 }
 
-func (m Memory) Set16(address uint32, value uint16, cycle bool, forceAddr bool) {
+func (m *Memory) Set16(address uint32, value uint16, cycle bool, forceAddr bool) {
 	bd := m.addrBlockData(address)
 	//if !bd.MemoryBlock.Writes[1] {
 	//	panic(fmt.Sprintf("cannot write 16 bits to %08X", address))
@@ -137,16 +153,17 @@ func (m Memory) Set16(address uint32, value uint16, cycle bool, forceAddr bool) 
 	if cycle {
 		m.cycle(bd, 1)
 	}
-	if m.setTimer(address, value) {
+	if m.setTimerL(address, value, forceAddr) {
 		return
 	}
+	m.checkTimerH(address, value)
 	block, offset := m.block(bd, address)
 	block[offset] = uint8(value)
 	block[offset+1] = uint8(value >> 8)
 	m.checkDMA(address)
 }
 
-func (m Memory) Read32(address uint32, cycle bool, forceAddr bool) (value uint32) {
+func (m *Memory) Read32(address uint32, cycle bool, forceAddr bool) (value uint32) {
 	bd := m.addrBlockData(address)
 	//if !bd.MemoryBlock.Reads[2] {
 	//	panic(fmt.Sprintf("cannot read 32 bits from %08X", address))
@@ -163,7 +180,7 @@ func (m Memory) Read32(address uint32, cycle bool, forceAddr bool) (value uint32
 	return
 }
 
-func (m Memory) Set32(address uint32, value uint32, cycle bool, forceAddr bool) {
+func (m *Memory) Set32(address uint32, value uint32, cycle bool, forceAddr bool) {
 	bd := m.addrBlockData(address)
 	//if !bd.MemoryBlock.Writes[2] {
 	//	panic(fmt.Sprintf("cannot write 32 bits to %08X", address))
@@ -172,9 +189,10 @@ func (m Memory) Set32(address uint32, value uint32, cycle bool, forceAddr bool) 
 	if cycle {
 		m.cycle(bd, 2)
 	}
-	if m.setTimer(address, uint16(value)) {
-		panic("cannot set timer to 32bit")
+	if m.setTimerL(address, uint16(value), forceAddr) {
+		panic("cannot Set timer to 32bit")
 	}
+	m.checkTimerH(address, uint16(value))
 	block, offset := m.block(bd, address)
 	block[offset] = uint8(value)
 	block[offset+1] = uint8(value >> 8)
@@ -183,7 +201,7 @@ func (m Memory) Set32(address uint32, value uint32, cycle bool, forceAddr bool) 
 	m.checkDMA(address)
 }
 
-func (m Memory) ClearBlock(mb MemoryBlock) {
+func (m *Memory) ClearBlock(mb MemoryBlock) {
 	clear(m.addrBlockData(mb.Start).Data)
 }
 

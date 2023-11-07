@@ -15,7 +15,7 @@ const (
 	DMASpecial
 )
 
-func (d DMAController) transfer(timing uint16) {
+func (d *DMAController) transfer(timing uint16) {
 	SADs := [4]IORegister[uint32]{DMA0SAD, DMA1SAD, DMA2SAD, DMA3SAD}
 	DADs := [4]IORegister[uint32]{DMA0DAD, DMA1DAD, DMA2DAD, DMA3DAD}
 	CNT_Ls := [4]IORegister[uint16]{DMA0CNT_L, DMA1CNT_L, DMA2CNT_L, DMA3CNT_L}
