@@ -3,7 +3,7 @@ module github.com/dbut2/sapphire
 go 1.21
 
 require (
-	fyne.io/fyne/v2 v2.4.3
+	fyne.io/fyne/v2 v2.4.4
 	github.com/dbut2/dialog v0.0.0-20230808141921-73cae36015ab
 	github.com/spf13/cobra v1.8.0
 )
@@ -20,7 +20,7 @@ require (
 	github.com/go-gl/gl v0.0.0-20211210172815-726fda9656d6 // indirect
 	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20221017161538-93cebf72946b // indirect
 	github.com/go-text/render v0.0.0-20230619120952-35bccb6164b8 // indirect
-	github.com/go-text/typesetting v0.0.0-20230803102845-24e03d8b5372 // indirect
+	github.com/go-text/typesetting v0.1.0 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/gopherjs/gopherjs v1.17.2 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
