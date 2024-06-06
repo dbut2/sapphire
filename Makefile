@@ -14,6 +14,10 @@ build: clean
 run: build
 	./Sapphire.app/Contents/MacOS/sapphire
 
+.PHONY: run-debug
+run-debug:
+	go run -tags debug ./debugger
+
 .PHONY: package
 package: build
 	zip -r build/sapphire.zip Sapphire.app

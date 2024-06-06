@@ -1,15 +1,18 @@
 package gba
 
 import (
+	"image"
 	"time"
 )
 
-type Emulator struct {
-	*Motherboard
-}
-
 func NewEmu(gamepak []byte) *Emulator {
-	return &Emulator{Motherboard: NewMotherboard(gamepak)}
+	motherboard := NewMotherboard(gamepak)
+
+	img := image.NewRGBA(image.Rect(0, 0, 240, 160))
+	motherboard.LCD.SetImage(img)
+	motherboard.LCD.SetDraw(func() {})
+
+	return &Emulator{Motherboard: motherboard}
 }
 
 func (e *Emulator) Boot() {
@@ -74,7 +77,7 @@ func (e *Emulator) step() {
 	SetIORegister(e.Memory, DISPSTAT, dispstat)
 
 	preCount := e.CPU.cycles
-	e.CPU.Step()
+	e.stepCPU()
 	postCount := e.CPU.cycles
 
 	e.Timer.Tick(postCount - preCount)
