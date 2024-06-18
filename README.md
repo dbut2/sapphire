@@ -31,7 +31,7 @@ Ensure the ROM file is a `.gba` file that represents a Game Boy Advance game.
 
 ## Development
 
-Sapphire is a work in progress, and contributions are welcome. Visit the project's issues page to report any bugs or feature requests and to see the list of known issues.
+Sapphire is a work in progress, and contributions are welcome. Visit the project's issues page to report any bugs or feature requests and to see the list of known problems.
 
 For development, besides the standard Go tools, Sapphire includes a `Makefile` that simplifies common tasks:
 
@@ -48,3 +48,17 @@ For development, besides the standard Go tools, Sapphire includes a `Makefile` t
 Sapphire is licensed under the [MIT License](https://opensource.org/licenses/MIT).
 
 ![Sapphire](sapphire.png)
+
+## Documentation
+
+- `/gba/alu.go`: Contains arithmetic and logic unit functions used in CPU operations for bitwise logical and arithmetic operations.
+- `/gba/cpu.go`: Defines the CPU structure and related functions, such as the main step function that processes one CPU instruction at a time.
+- `/gba/emu.go`: Contains the emulator struct and its methods, including the main `Boot` and `Run` functions.
+- `/gba/lcd.go`: Handles the LCD display operations, drawing game frames and refreshing the screen.
+- `/gba/memory.go`: Manages memory operations, reading and writing to different memory regions.
+- `/gba/motherboard.go`: Represents the main emulator state, including CPU, memory, LCD, DMA, and timers.
+- `/gba/timer.go`: Manages the emulator's timers, ticking them and handling overflows.
+- `/debugger/debugger.go`: Provides debugging support when built with the `debug` tag, allowing hooks into emulator execution for debugging purposes.
+- `/debugger/hooks/hooks.go`: Offers a hook service to execute custom functions at specific emulator execution points.
+
+Ensure to check the code comments and function names for more detailed information on their behavior and usage.
