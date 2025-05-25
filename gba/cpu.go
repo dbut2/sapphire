@@ -70,7 +70,6 @@ type CPURegisters struct {
 	// registers to interact
 	R    [16]uint32
 	CPSR uint32
-	SPSR uint32
 
 	// registers to be swapped on mode change
 	R0       uint32
@@ -209,7 +208,7 @@ const (
 )
 
 func (c *CPU) restoreCpsr() {
-	cpsr := c.SPSR
+	cpsr := *c.spsrAddr(c.cpsrMode())
 	newMode := ReadBits(cpsr, 0, 5)
 	c.cpsrSetMode(newMode)
 	c.CPSR = cpsr
@@ -224,20 +223,17 @@ func (c *CPU) cpsrInitMode(value uint32) {
 }
 
 func (c *CPU) cpsrSetMode(value uint32) {
-	prevMode := c.cpsrMode()
-	nextMode := value
+	prevMode := c.cpsrMode() | 0b10000
+	nextMode := value | 0b10000
 
 	wasPrivileged := prevMode != USR && prevMode != SYS
 	nowPrivileged := nextMode != USR && nextMode != SYS
 
-	if wasPrivileged {
-		*c.spsrAddr(prevMode) = c.SPSR
-	}
 	if nowPrivileged {
-		c.SPSR = *c.spsrAddr(nextMode)
+		*c.spsrAddr(nextMode) = c.CPSR
 	}
-	if nowPrivileged && !wasPrivileged {
-		c.SPSR = c.CPSR
+	if wasPrivileged {
+		c.CPSR = *c.spsrAddr(prevMode)
 	}
 
 	for i := uint32(0); i <= 15; i++ {
@@ -264,9 +260,9 @@ func (c *CPU) cpsrSetIRQDisable(value uint32) {
 	c.CPSR = SetBits(c.CPSR, 7, 1, value)
 }
 
-//func (c *CPU) cpsrFIQDisable() uint32 {
-//	return ReadBits(c.CPSR, 6, 1)
-//}
+func (c *CPU) cpsrFIQDisable() uint32 {
+	return ReadBits(c.CPSR, 6, 1)
+}
 
 func (c *CPU) cpsrSetFIQDisable(value uint32) {
 	c.CPSR = SetBits(c.CPSR, 6, 1, value)
@@ -324,7 +320,7 @@ func (c *CPU) exception(vector uint32) {
 		c.cpsrSetMode(FIQ)
 	}
 
-	c.R[14] = c.next
+	c.R[14] = c.R[15]
 	c.cpsrSetState(0)
 	c.cpsrSetIRQDisable(1)
 	switch vector {
@@ -437,6 +433,9 @@ func (c *CPU) SWI(comment uint32) {
 			}
 		}
 	case RegisterRamReset:
+		c.exception(0x08)
+		return
+
 		clearWram1 := ReadBits(c.R[0], 0, 1)
 		if clearWram1 == 1 {
 			c.Memory.ClearBlock(WRAM1)

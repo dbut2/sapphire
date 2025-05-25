@@ -339,7 +339,7 @@ func (c *CPU) ArmMRS(instruction uint32) {
 	case 0:
 		c.R[Rd] = c.CPSR
 	case 1:
-		c.R[Rd] = c.SPSR
+		c.R[Rd] = *c.spsrAddr(c.cpsrMode())
 	}
 }
 
@@ -376,7 +376,7 @@ func (c *CPU) ArmMSR(instruction uint32) {
 
 		c.CPSR = cpsr
 	} else {
-		c.SPSR = (c.SPSR &^ fieldMask) | (Op & fieldMask)
+		*c.spsrAddr(c.cpsrMode()) = (*c.spsrAddr(c.cpsrMode()) & ^fieldMask) | (Op & fieldMask)
 	}
 }
 

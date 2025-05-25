@@ -15,17 +15,13 @@ func NewEmu(gamepak []byte) *Emulator {
 	return &Emulator{Motherboard: motherboard}
 }
 
-func (e *Emulator) Boot() {
-	e.CPU.R13 = 0x03007F00
-	e.CPU.R13_svc = 0x03007FE0
-	e.CPU.R13_irq = 0x03007FA0
-
-	e.CPU.cpsrInitMode(SYS)
-	e.CPU.prefetchFlush()
-
+func (e *Emulator) PreBoot() {
 	SetIORegister(e.CPU.Memory, DISPCNT, 0x80)
 	e.CPU.exception(0x08)
+}
 
+func (e *Emulator) Boot() {
+	e.PreBoot()
 	e.Run()
 }
 
