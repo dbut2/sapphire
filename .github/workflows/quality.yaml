@@ -1,4 +1,4 @@
-name: Quality
+name: Quality Checks
 
 on:
   push:
@@ -8,36 +8,31 @@ on:
 
 jobs:
   test:
-    name: Test
-    runs-on: macos-latest
+    name: Go Test
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v4
-        with:
-          go-version: '1.21'
+      - name: Check out code
+        uses: actions/checkout@v4
 
-      - run: go test ./...
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: ./go.mod
+
+      - name: Run tests
+        run: go test -v ./...
 
   lint:
-    name: Lint
-    runs-on: macos-latest
+    name: golangci-lint
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v4
-        with:
-          go-version: '1.21'
+      - name: Check out code
+        uses: actions/checkout@v4
 
-      - uses: golangci/golangci-lint-action@v3
+      - name: Set up Go
+        uses: actions/setup-go@v5
         with:
-          args: --timeout=5m
+          go-version-file: ./go.mod
 
-  vet:
-    name: Vet
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v4
-        with:
-          go-version: '1.21'
-
-      - run: go vet ./...
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v8
