@@ -233,9 +233,9 @@ func (c *CPU) cpsrMode() uint32 {
 	return ReadBits(c.CPSR, 0, 5)
 }
 
-func (c *CPU) cpsrInitMode(value uint32) {
-	c.CPSR = SetBits(c.CPSR, 0, 5, value)
-}
+//func (c *CPU) cpsrInitMode(value uint32) {
+//	c.CPSR = SetBits(c.CPSR, 0, 5, value)
+//}
 
 func (c *CPU) cpsrSetMode(value uint32) {
 	prevMode := c.cpsrMode() | 0b10000
@@ -273,9 +273,9 @@ func (c *CPU) cpsrSetIRQDisable(value uint32) {
 	c.CPSR = SetBits(c.CPSR, 7, 1, value)
 }
 
-func (c *CPU) cpsrFIQDisable() uint32 {
-	return ReadBits(c.CPSR, 6, 1)
-}
+//func (c *CPU) cpsrFIQDisable() uint32 {
+//	return ReadBits(c.CPSR, 6, 1)
+//}
 
 func (c *CPU) cpsrSetFIQDisable(value uint32) {
 	c.CPSR = SetBits(c.CPSR, 6, 1, value)

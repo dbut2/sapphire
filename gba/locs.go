@@ -31,31 +31,6 @@ var (
 	GPSRAM  = mb(0x0E000000, 0xFFFFFFFF, 64*k, [3]bool{true, false, false}, [3]bool{true, false, false}, [3]uint32{5, 5, 5})
 )
 
-var mbStarts = [0x0F]*MemoryBlock{
-	0x00: &BIOS,
-	0x01: &BIOS,
-	0x02: &WRAM1,
-	0x03: &WRAM2,
-	0x04: &IOR,
-	0x05: &Palette,
-	0x06: &VRAM,
-	0x07: &OAM,
-	0x08: &GPRom1,
-	0x09: &GPRom1,
-	0x0A: &GPRom2,
-	0x0B: &GPRom2,
-	0x0C: &GPRom3,
-	0x0D: &GPRom3,
-	0x0E: &GPSRAM,
-}
-
-func mbLookup(add uint32) MemoryBlock {
-	if add >= 0x0E000000 {
-		return GPSRAM
-	}
-	return *mbStarts[add>>24]
-}
-
 type IORegister[S Size] uint32
 
 const (

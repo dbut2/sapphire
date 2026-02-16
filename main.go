@@ -36,7 +36,7 @@ func run(game string, gamepak []byte) {
 		emu.Flash.LoadData(data)
 	}
 	emu.Flash.OnSave(func(data []byte) {
-		os.WriteFile(savePath, data, 0644)
+		_ = os.WriteFile(savePath, data, 0644)
 	})
 
 	win := window{

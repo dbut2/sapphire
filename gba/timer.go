@@ -91,13 +91,6 @@ func (t *Timer) OnControlWrite(address uint32, value uint16) {
 	}
 }
 
-var timerIndex = map[IORegister[uint16]]int{
-	TM0CNT_L: 0,
-	TM1CNT_L: 1,
-	TM2CNT_L: 2,
-	TM3CNT_L: 3,
-}
-
 var indexTimer = map[int]IORegister[uint16]{
 	0: TM0CNT_L,
 	1: TM1CNT_L,
