@@ -103,5 +103,8 @@ func main() {
 	select {}
 }
 
+// WASM requires a gamepak to be built
+// Please source a game and place at ./gamepak.gba
+//
 //go:embed gamepak.gba
 var game []byte
