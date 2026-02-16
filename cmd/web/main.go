@@ -1,3 +1,5 @@
+//go:build js && wasm
+
 package main
 
 import (
@@ -46,7 +48,7 @@ func main() {
 	canvasEl.Set("width", width)
 	canvasEl.Set("height", height)
 
-	e := gba.NewEmu(GAME)
+	e := gba.NewEmu(game)
 
 	localStorage := js.Global().Get("localStorage")
 	if encoded := localStorage.Call("getItem", saveKey); !encoded.IsNull() {

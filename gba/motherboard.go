@@ -1,9 +1,5 @@
 package gba
 
-import (
-	_ "embed"
-)
-
 type Motherboard struct {
 	CPU    *CPU
 	Memory *Memory
@@ -24,10 +20,6 @@ func NewMotherboard(gamepak []byte) *Motherboard {
 	m.Timer = NewTimer(m)
 	m.Flash = NewFlash(m, gamepak)
 	m.GPIO = NewGPIO()
-
-	for i := range bios {
-		bios[i] ^= 0x69
-	}
 
 	m.Memory.SetMemoryBlock(BIOS, bios[:])
 	m.Memory.SetMemoryBlock(GPRom1, gamepak)
