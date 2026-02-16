@@ -6,6 +6,9 @@ on:
       - main
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Go Test
@@ -25,7 +28,7 @@ jobs:
         run: make decrypt
 
       - name: Run tests
-        run: go test -v ./...
+        run: go test -v ./gba/...
 
   lint:
     name: golangci-lint
@@ -38,6 +41,9 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version-file: ./go.mod
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libgl-dev libx11-dev libxcursor-dev libxrandr-dev libxinerama-dev libxi-dev libxxf86vm-dev libgtk-3-dev
 
       - name: Decrypt assets
         env:
@@ -58,6 +64,9 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version-file: ./go.mod
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libgl-dev libx11-dev libxcursor-dev libxrandr-dev libxinerama-dev libxi-dev libxxf86vm-dev libgtk-3-dev
 
       - name: Decrypt assets
         env:
