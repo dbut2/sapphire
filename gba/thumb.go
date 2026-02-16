@@ -2,8 +2,6 @@ package gba
 
 func (c *CPU) Thumb(instruction uint32) {
 	switch {
-	case instruction&0b1111_1111_1111_1111 == 0b0000_0000_0000_0000:
-		noins(instruction)
 	case instruction&0b1111_1111_0000_0000 == 0b1101_1111_0000_0000:
 		c.ThumbSWI(instruction)
 	case instruction&0b1111_1100_0000_0000 == 0b0100_0000_0000_0000:
@@ -45,7 +43,7 @@ func (c *CPU) Thumb(instruction uint32) {
 	case instruction&0b1111_1111_0000_0000 == 0b1011_0000_0000_0000:
 		c.ThumbAddSP(instruction)
 	default:
-		noins(instruction)
+		c.noins(instruction)
 	}
 }
 
@@ -61,12 +59,21 @@ func (c *CPU) ThumbShift(instruction uint32) {
 	switch Opcode {
 	case 0b00:
 		value, carry = ShiftLSL(c.R[Rs], Offset)
+		if Offset == 0 {
+			carry = c.cpsrC() == 1
+		}
 	case 0b01:
+		if Offset == 0 {
+			Offset = 32
+		}
 		value, carry = ShiftLSR(c.R[Rs], Offset)
 	case 0b10:
+		if Offset == 0 {
+			Offset = 32
+		}
 		value, carry = ShiftASR(c.R[Rs], Offset)
 	default:
-		noins(instruction)
+		c.noins(instruction)
 	}
 
 	c.R[Rd] = value
@@ -80,12 +87,12 @@ func (c *CPU) ThumbShift(instruction uint32) {
 }
 
 func (c *CPU) ThumbAddSub(instruction uint32) {
-	map[uint32]func(uint32){
-		0: c.Thumb_ADD,
-		1: c.Thumb_SUB,
-		2: c.Thumb_ADD,
-		3: c.Thumb_SUB,
-	}[ReadBits(instruction, 9, 2)](instruction)
+	switch ReadBits(instruction, 9, 2) {
+	case 0, 2:
+		c.Thumb_ADD(instruction)
+	case 1, 3:
+		c.Thumb_SUB(instruction)
+	}
 }
 
 func (c *CPU) Thumb_ADD(instruction uint32) { // Rd=Rs+Rn / Rd=Rs+nn
@@ -373,13 +380,17 @@ func (c *CPU) ThumbBranchLink1(instruction uint32) {
 
 func (c *CPU) ThumbBranchLink2(instruction uint32) {
 	nn := ReadBits(instruction, 0, 11) << 1
-	x := ReadBits(instruction, 12, 0)
+	H := ReadBits(instruction, 12, 1)
 
 	l := c.R[14] + nn
-	c.R[14] = c.R[15] - 2 | 1
+	c.R[14] = (c.curr + 2) | 1
 	c.R[15] = l
 
-	c.cpsrSetState(x ^ 1)
+	if H == 0 {
+		c.R[15] &= ^uint32(3)
+		c.cpsrSetState(0)
+	}
+
 	c.prefetchFlush()
 }
 
@@ -466,12 +477,16 @@ func (c *CPU) ThumbMemoryPCRel(instruction uint32) {
 }
 
 func (c *CPU) ThumbMemoryReg(instruction uint32) {
-	map[uint32]func(uint32){
-		0: c.Thumb_STR,
-		1: c.Thumb_STRB,
-		2: c.Thumb_LDR,
-		3: c.Thumb_LDRB,
-	}[ReadBits(instruction, 10, 2)](instruction)
+	switch ReadBits(instruction, 10, 2) {
+	case 0:
+		c.Thumb_STR(instruction)
+	case 1:
+		c.Thumb_STRB(instruction)
+	case 2:
+		c.Thumb_LDR(instruction)
+	case 3:
+		c.Thumb_LDRB(instruction)
+	}
 }
 
 func (c *CPU) Thumb_STR(instruction uint32) {
@@ -569,7 +584,7 @@ func (c *CPU) ThumbMemoryBlock(instruction uint32) {
 }
 
 func (c *CPU) ThumbMemorySign(instruction uint32) {
-	noins(instruction) // todo
+	c.noins(instruction) // todo
 }
 
 func (c *CPU) ThumbMemoryHalfSign(instruction uint32) {

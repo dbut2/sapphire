@@ -12,12 +12,20 @@ func (c *CPU) Arm(instruction uint32) {
 	switch {
 	case instruction&0b0000_1111_1111_1111_1111_1111_0000_0000 == 0b0000_0001_0010_1111_1111_1111_0000_0000:
 		c.ArmBranchX(instruction)
-	case instruction&0b0000_1101_1001_0000_0000_0000_0000_0000 == 0b0000_0001_0000_0000_0000_0000_0000_0000:
-		c.ArmPSR(instruction)
+	case instruction&0b0000_1111_1011_1111_0000_1111_1111_1111 == 0b0000_0001_0000_1111_0000_0000_0000_0000:
+		c.ArmMRS(instruction)
+	case instruction&0b0000_1101_1011_0000_1111_0000_0000_0000 == 0b0000_0001_0010_0000_1111_0000_0000_0000:
+		c.ArmMSR(instruction)
+	case instruction&0b0000_1111_1011_0000_0000_1111_1111_0000 == 0b0000_0001_0000_0000_0000_0000_1001_0000:
+		c.ArmSwap(instruction)
 	case instruction&0b0000_1111_0000_0000_0000_0000_0000_0000 == 0b0000_1111_0000_0000_0000_0000_0000_0000:
 		c.ArmSWI(instruction)
 	case instruction&0b0000_1110_0000_0000_0000_0000_0000_0000 == 0b0000_1000_0000_0000_0000_0000_0000_0000:
 		c.ArmMemoryBlock(instruction)
+	case instruction&0b0000_1111_1100_0000_0000_0000_1111_0000 == 0b0000_0000_0000_0000_0000_0000_1001_0000:
+		c.ArmMultiply(instruction)
+	case instruction&0b0000_1111_1000_0000_0000_0000_1111_0000 == 0b0000_0000_1000_0000_0000_0000_1001_0000:
+		c.ArmMultiplyLong(instruction)
 	case instruction&0b0000_1110_0000_0000_0000_0000_1001_0000 == 0b0000_0000_0000_0000_0000_0000_1001_0000:
 		c.Arm_MemoryHalf(instruction)
 	case instruction&0b0000_1110_0000_0000_0000_0000_0000_0000 == 0b0000_1010_0000_0000_0000_0000_0000_0000:
@@ -27,11 +35,11 @@ func (c *CPU) Arm(instruction uint32) {
 	case instruction&0b0000_1111_0000_0000_0000_0000_0000_0000 == 0b0000_1110_0000_0000_0000_0000_0000_0000,
 		instruction&0b0000_1110_0000_0000_0000_0000_0000_0000 == 0b0000_1100_0000_0000_0000_0000_0000_0000,
 		instruction&0b0000_1111_1110_0000_0000_0000_0000_0000 == 0b0000_1100_0100_0000_0000_0000_0000_0000:
-		noins(instruction)
+		return
 	case instruction&0b0000_1100_0000_0000_0000_0000_0000_0000 == 0b0000_0000_0000_0000_0000_0000_0000_0000:
 		c.ArmALU(instruction)
 	default:
-		noins(instruction)
+		c.noins(instruction)
 	}
 }
 
@@ -105,7 +113,7 @@ func (c *CPU) ArmALU(instruction uint32) {
 		flagger = FlagLogic
 		logic = true
 	default:
-		noins(instruction)
+		c.noins(instruction)
 	}
 
 	Rd := ReadBits(instruction, 12, 4)
@@ -120,7 +128,7 @@ func (c *CPU) ArmALU(instruction uint32) {
 	if !void {
 		c.R[Rd] = uint32(value)
 
-		if Rd == 15 {
+		if Rd == 15 && S == 0 {
 			c.prefetchFlush()
 		}
 	}
@@ -137,19 +145,8 @@ func (c *CPU) ArmALU(instruction uint32) {
 		c.cpsrSetZ(Z)
 		c.cpsrSetN(N)
 	case S == 1 && Rd == 15 && !void:
-		c.cpsrSetZ(Z)
-		c.cpsrSetN(N)
-		c.cpsrSetC(C)
-		c.cpsrSetV(V)
-
 		c.restoreCpsr()
-
-		cond1 := c.cpsrIRQDisable() == 0
-		cond2 := ReadIORegister(c.Memory, IME) > 0
-		cond3 := ReadIORegister(c.Memory, IE)&ReadIORegister(c.Memory, IF) > 0
-		if cond1 && cond2 && cond3 {
-			c.exception(0x18)
-		}
+		c.prefetchFlush()
 	}
 }
 
@@ -186,13 +183,13 @@ func (c *CPU) Arm_Op2(instruction uint32) uint32 {
 		switch R {
 		case 0:
 			Is := ReadBits(instruction, 7, 5)
-			return c.ArmShift(st, Rm, Is, S, I)
+			return c.ArmShift(st, Rm, Is, S, 1)
 		case 1:
 			c.cycle(1)
 			Rs := ReadBits(instruction, 8, 4) & 0b11111111
 			return c.ArmShift(st, Rm, c.R[Rs], S, I)
 		default:
-			noins(instruction)
+			c.noins(instruction)
 			return 0
 		}
 	case 1:
@@ -200,7 +197,7 @@ func (c *CPU) Arm_Op2(instruction uint32) uint32 {
 		nn := ReadBits(instruction, 0, 8)
 		return c.ArmShift(ROR, nn, Is, S, 0)
 	default:
-		noins(instruction)
+		c.noins(instruction)
 		return 0
 	}
 }
@@ -290,7 +287,7 @@ func (c *CPU) ArmBranchX(instruction uint32) {
 	case 0b0011:
 		c.Arm_BLX(instruction)
 	default:
-		noins(instruction)
+		c.noins(instruction)
 	}
 
 	c.prefetchFlush()
@@ -315,25 +312,9 @@ func (c *CPU) Arm_BLX(instruction uint32) {
 	c.R[15] = value - 1
 }
 
-func (c *CPU) ArmPSR(instruction uint32) {
-	Opcode := ReadBits(instruction, 21, 1)
-
-	switch Opcode {
-	case 0:
-		c.ArmMRS(instruction)
-	case 1:
-		c.ArmMSR(instruction)
-	}
-}
-
 func (c *CPU) ArmMRS(instruction uint32) {
 	Rd := ReadBits(instruction, 12, 4)
 	Psr := ReadBits(instruction, 22, 1)
-
-	SWP := ReadBits(instruction, 16, 4)
-	if SWP != 0b1111 {
-		noins(instruction)
-	}
 
 	switch Psr {
 	case 0:
@@ -343,15 +324,41 @@ func (c *CPU) ArmMRS(instruction uint32) {
 	}
 }
 
+func (c *CPU) ArmSwap(instruction uint32) {
+	B := ReadBits(instruction, 22, 1)
+	Rn := ReadBits(instruction, 16, 4)
+	Rd := ReadBits(instruction, 12, 4)
+	Rm := ReadBits(instruction, 0, 4)
+	addr := c.R[Rn]
+
+	if B == 0 {
+		tmp := c.Memory.Read32(addr, true, false)
+		c.Memory.Set32(addr, c.R[Rm], true, false)
+		c.R[Rd] = tmp
+	} else {
+		tmp := uint32(c.Memory.Read8(addr, true, false))
+		c.Memory.Set8(addr, uint8(c.R[Rm]), true, false)
+		c.R[Rd] = tmp
+	}
+}
+
 func (c *CPU) ArmMSR(instruction uint32) {
 	I := ReadBits(instruction, 25, 1)
 	Psr := ReadBits(instruction, 22, 1)
 
-	f := ((ReadBits(instruction, 19, 1) ^ 1) - 1) >> 0
-	s := ((ReadBits(instruction, 18, 1) ^ 1) - 1) >> 8
-	x := ((ReadBits(instruction, 17, 1) ^ 1) - 1) >> 16
-	c2 := ((ReadBits(instruction, 16, 1) ^ 1) - 1) >> 24
-	fieldMask := f | s | x | c2
+	var fieldMask uint32
+	if ReadBits(instruction, 19, 1) == 1 {
+		fieldMask |= 0xFF000000
+	}
+	if ReadBits(instruction, 18, 1) == 1 {
+		fieldMask |= 0x00FF0000
+	}
+	if ReadBits(instruction, 17, 1) == 1 {
+		fieldMask |= 0x0000FF00
+	}
+	if ReadBits(instruction, 16, 1) == 1 {
+		fieldMask |= 0x000000FF
+	}
 
 	var Op uint32
 	switch I {
@@ -365,7 +372,7 @@ func (c *CPU) ArmMSR(instruction uint32) {
 	}
 
 	if c.cpsrMode() == USR {
-		fieldMask &= ^c2
+		fieldMask &= 0xFFFFFF00
 	}
 
 	if Psr == 0 {
@@ -596,11 +603,6 @@ func (c *CPU) Arm_MemoryHalf(instruction uint32) {
 
 	var Offset uint32
 
-	switch I {
-	case 0:
-	case 1:
-
-	}
 	if I == 0 {
 		Rm := ReadBits(instruction, 0, 4)
 		Offset = c.R[Rm]
@@ -617,7 +619,7 @@ func (c *CPU) Arm_MemoryHalf(instruction uint32) {
 		addr += Offset
 	}
 
-	setRegisters := map[uint32]bool{}
+	var setRegisters uint16
 
 	switch L {
 	case 0:
@@ -628,28 +630,28 @@ func (c *CPU) Arm_MemoryHalf(instruction uint32) {
 			addr &= ^uint32(8)
 			c.R[Rd] = c.Memory.Read32(addr, true, false)
 			c.R[Rd+1] = c.Memory.Read32(addr+4, true, false)
-			setRegisters[Rd] = true
-			setRegisters[Rd+1] = true
+			setRegisters |= 1 << Rd
+			setRegisters |= 1 << (Rd + 1)
 		case 0b11: //STRD
 			addr &= ^uint32(8)
 			c.Memory.Set32(addr, c.R[Rd], true, false)
 			c.Memory.Set32(addr+4, c.R[Rd+1], true, false)
 		default:
-			noins(instruction)
+			c.noins(instruction)
 		}
 	case 1:
 		switch Opcode {
 		case 0b01:
 			c.R[Rd] = uint32(c.Memory.Read16(addr, true, false))
-			setRegisters[Rd] = true
+			setRegisters |= 1 << Rd
 		case 0b10:
 			c.R[Rd] = uint32(signify(uint32(c.Memory.Read8(addr, true, false)), 8))
-			setRegisters[Rd] = true
+			setRegisters |= 1 << Rd
 		case 0b11:
 			c.R[Rd] = uint32(signify(uint32(c.Memory.Read16(addr, true, false)), 16))
-			setRegisters[Rd] = true
+			setRegisters |= 1 << Rd
 		default:
-			noins(instruction)
+			c.noins(instruction)
 		}
 	}
 
@@ -659,15 +661,65 @@ func (c *CPU) Arm_MemoryHalf(instruction uint32) {
 
 	if P == 0 || W == 1 {
 		c.R[Rn] = addr
-		setRegisters[Rn] = true
+		setRegisters |= 1 << Rn
 	}
 
-	if _, ok := setRegisters[15]; ok {
+	if setRegisters&(1<<15) != 0 {
 		c.prefetchFlush()
 	}
 }
 
+func (c *CPU) ArmMultiply(instruction uint32) {
+	A := ReadBits(instruction, 21, 1)
+	S := ReadBits(instruction, 20, 1)
+	Rd := ReadBits(instruction, 16, 4)
+	Rn := ReadBits(instruction, 12, 4)
+	Rs := ReadBits(instruction, 8, 4)
+	Rm := ReadBits(instruction, 0, 4)
+
+	result := c.R[Rm] * c.R[Rs]
+	if A == 1 {
+		result += c.R[Rn]
+	}
+	c.R[Rd] = result
+
+	if S == 1 {
+		c.cpsrSetN(result>>31 == 1)
+		c.cpsrSetZ(result == 0)
+	}
+}
+
+func (c *CPU) ArmMultiplyLong(instruction uint32) {
+	U := ReadBits(instruction, 22, 1)
+	A := ReadBits(instruction, 21, 1)
+	S := ReadBits(instruction, 20, 1)
+	RdHi := ReadBits(instruction, 16, 4)
+	RdLo := ReadBits(instruction, 12, 4)
+	Rs := ReadBits(instruction, 8, 4)
+	Rm := ReadBits(instruction, 0, 4)
+
+	var result int64
+	if U == 0 {
+		result = int64(uint64(c.R[Rm]) * uint64(c.R[Rs]))
+	} else {
+		result = int64(int32(c.R[Rm])) * int64(int32(c.R[Rs]))
+	}
+
+	if A == 1 {
+		acc := int64(uint64(c.R[RdHi])<<32 | uint64(c.R[RdLo]))
+		result += acc
+	}
+
+	c.R[RdLo] = uint32(result)
+	c.R[RdHi] = uint32(result >> 32)
+
+	if S == 1 {
+		c.cpsrSetN(c.R[RdHi]>>31 == 1)
+		c.cpsrSetZ(c.R[RdHi] == 0 && c.R[RdLo] == 0)
+	}
+}
+
 func (c *CPU) ArmSWI(instruction uint32) {
-	nn := ReadBits(instruction, 0, 24)
+	nn := ReadBits(instruction, 16, 8)
 	c.SWI(nn)
 }

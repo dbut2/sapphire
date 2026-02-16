@@ -3,24 +3,58 @@ package gba
 type MemoryBlock struct {
 	Start, End uint32
 	Size       uint32
+	Mask       uint32
 	Reads      [3]bool
 	Writes     [3]bool
 	Cycles     [3]uint32
 }
 
+func mb(start, end, size uint32, reads, writes [3]bool, cycles [3]uint32) MemoryBlock {
+	var mask uint32
+	if size&(size-1) == 0 {
+		mask = size - 1
+	}
+	return MemoryBlock{start, end, size, mask, reads, writes, cycles}
+}
+
 var (
-	BIOS    = MemoryBlock{0x00000000, 0x00003FFF, 16 * k, [3]bool{true, true, true}, [3]bool{false, false, false}, [3]uint32{1, 1, 1}}
-	WRAM1   = MemoryBlock{0x02000000, 0x02FFFFFF, 256 * k, [3]bool{true, true, true}, [3]bool{true, true, true}, [3]uint32{3, 3, 6}}
-	WRAM2   = MemoryBlock{0x03000000, 0x03FFFFFF, 32 * k, [3]bool{true, true, true}, [3]bool{true, true, true}, [3]uint32{1, 1, 1}}
-	IOR     = MemoryBlock{0x04000000, 0x040003FE, 0x3FE, [3]bool{true, true, true}, [3]bool{true, true, true}, [3]uint32{1, 1, 1}}
-	Palette = MemoryBlock{0x05000000, 0x05FFFFFF, 1 * k, [3]bool{true, true, true}, [3]bool{false, true, true}, [3]uint32{1, 1, 2}}
-	VRAM    = MemoryBlock{0x06000000, 0x06017FFF, 96 * k, [3]bool{true, true, true}, [3]bool{false, true, true}, [3]uint32{1, 1, 1}}
-	OAM     = MemoryBlock{0x07000000, 0x07FFFFFF, 64 * k, [3]bool{true, true, true}, [3]bool{false, true, true}, [3]uint32{1, 1, 1}}
-	GPRom1  = MemoryBlock{0x08000000, 0x09FFFFFF, 32 * m, [3]bool{true, true, true}, [3]bool{false, false, false}, [3]uint32{5, 5, 8}}
-	GPRom2  = MemoryBlock{0x0A000000, 0x0BFFFFFF, 32 * m, [3]bool{true, true, true}, [3]bool{false, false, false}, [3]uint32{5, 5, 8}}
-	GPRom3  = MemoryBlock{0x0C000000, 0x0DFFFFFF, 32 * m, [3]bool{true, true, true}, [3]bool{false, false, false}, [3]uint32{5, 5, 8}}
-	GPSRAM  = MemoryBlock{0x0E000000, 0xFFFFFFFF, 64 * k, [3]bool{true, false, false}, [3]bool{true, false, false}, [3]uint32{5, 5, 5}}
+	BIOS    = mb(0x00000000, 0x00003FFF, 16*k, [3]bool{true, true, true}, [3]bool{false, false, false}, [3]uint32{1, 1, 1})
+	WRAM1   = mb(0x02000000, 0x02FFFFFF, 256*k, [3]bool{true, true, true}, [3]bool{true, true, true}, [3]uint32{3, 3, 6})
+	WRAM2   = mb(0x03000000, 0x03FFFFFF, 32*k, [3]bool{true, true, true}, [3]bool{true, true, true}, [3]uint32{1, 1, 1})
+	IOR     = mb(0x04000000, 0x040003FF, 0x400, [3]bool{true, true, true}, [3]bool{true, true, true}, [3]uint32{1, 1, 1})
+	Palette = mb(0x05000000, 0x05FFFFFF, 1*k, [3]bool{true, true, true}, [3]bool{false, true, true}, [3]uint32{1, 1, 2})
+	VRAM    = mb(0x06000000, 0x06017FFF, 96*k, [3]bool{true, true, true}, [3]bool{false, true, true}, [3]uint32{1, 1, 1})
+	OAM     = mb(0x07000000, 0x07FFFFFF, 1*k, [3]bool{true, true, true}, [3]bool{false, true, true}, [3]uint32{1, 1, 1})
+	GPRom1  = mb(0x08000000, 0x09FFFFFF, 32*m, [3]bool{true, true, true}, [3]bool{false, false, false}, [3]uint32{5, 5, 8})
+	GPRom2  = mb(0x0A000000, 0x0BFFFFFF, 32*m, [3]bool{true, true, true}, [3]bool{false, false, false}, [3]uint32{5, 5, 8})
+	GPRom3  = mb(0x0C000000, 0x0DFFFFFF, 32*m, [3]bool{true, true, true}, [3]bool{false, false, false}, [3]uint32{5, 5, 8})
+	GPSRAM  = mb(0x0E000000, 0xFFFFFFFF, 64*k, [3]bool{true, false, false}, [3]bool{true, false, false}, [3]uint32{5, 5, 5})
 )
+
+var mbStarts = [0x0F]*MemoryBlock{
+	0x00: &BIOS,
+	0x01: &BIOS,
+	0x02: &WRAM1,
+	0x03: &WRAM2,
+	0x04: &IOR,
+	0x05: &Palette,
+	0x06: &VRAM,
+	0x07: &OAM,
+	0x08: &GPRom1,
+	0x09: &GPRom1,
+	0x0A: &GPRom2,
+	0x0B: &GPRom2,
+	0x0C: &GPRom3,
+	0x0D: &GPRom3,
+	0x0E: &GPSRAM,
+}
+
+func mbLookup(add uint32) MemoryBlock {
+	if add >= 0x0E000000 {
+		return GPSRAM
+	}
+	return *mbStarts[add>>24]
+}
 
 type IORegister[S Size] uint32
 
