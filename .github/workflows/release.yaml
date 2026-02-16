@@ -14,18 +14,49 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
-          go-version: '1.25'
-      - run: |
-          make package
-      - uses: svenstaro/upload-release-action@v2
+          go-version-file: ./go.mod
+
+      - name: Decrypt assets
+        env:
+          SAPPHIRE_KEY: ${{ secrets.SAPPHIRE_KEY }}
+        run: make decrypt
+
+      - name: Build macOS universal binary
+        run: |
+          CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -o build/sapphire-amd64 .
+          CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -o build/sapphire-arm64 .
+          lipo -create -output build/sapphire build/sapphire-amd64 build/sapphire-arm64
+          mkdir -p Sapphire.app/Contents/MacOS/
+          cp build/sapphire Sapphire.app/Contents/MacOS/sapphire
+
+      - name: Build WASM
+        run: GOOS=js GOARCH=wasm go build -o build/sapphire.wasm ./cmd/web
+
+      - name: Package macOS
+        run: |
+          zip -r build/sapphire.zip Sapphire.app
+          hdiutil create -volname Sapphire -srcfolder Sapphire.app -ov -format UDZO build/sapphire.dmg
+
+      - name: Upload DMG
+        uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: build/sapphire.dmg
           asset_name: sapphire.dmg
           tag: ${{ github.ref }}
-      - uses: svenstaro/upload-release-action@v2
+
+      - name: Upload ZIP
+        uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: build/sapphire.zip
           asset_name: sapphire.zip
+          tag: ${{ github.ref }}
+
+      - name: Upload WASM
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: build/sapphire.wasm
+          asset_name: sapphire.wasm
           tag: ${{ github.ref }}

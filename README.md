@@ -46,5 +46,3 @@ For development, besides the standard Go tools, Sapphire includes a `Makefile` t
 ## License
 
 Sapphire is licensed under the [MIT License](https://opensource.org/licenses/MIT).
-
-![Sapphire](sapphire.png)

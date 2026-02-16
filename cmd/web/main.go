@@ -1,6 +1,9 @@
+//go:build js && wasm
+
 package main
 
 import (
+	_ "embed"
 	"encoding/base64"
 	"image"
 	"os"
@@ -46,7 +49,7 @@ func main() {
 	canvasEl.Set("width", width)
 	canvasEl.Set("height", height)
 
-	e := gba.NewEmu(GAME)
+	e := gba.NewEmu(game)
 
 	localStorage := js.Global().Get("localStorage")
 	if encoded := localStorage.Call("getItem", saveKey); !encoded.IsNull() {
@@ -99,3 +102,6 @@ func main() {
 
 	select {}
 }
+
+//go:embed gamepak.gba
+var game []byte
