@@ -3,6 +3,7 @@
 package main
 
 import (
+	_ "embed"
 	"encoding/base64"
 	"image"
 	"os"
@@ -101,3 +102,6 @@ func main() {
 
 	select {}
 }
+
+//go:embed gamepak.gba
+var game []byte

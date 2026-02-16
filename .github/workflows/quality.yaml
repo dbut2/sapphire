@@ -19,6 +19,11 @@ jobs:
         with:
           go-version-file: ./go.mod
 
+      - name: Decrypt assets
+        env:
+          SAPPHIRE_KEY: ${{ secrets.SAPPHIRE_KEY }}
+        run: make decrypt
+
       - name: Run tests
         run: go test -v ./...
 
@@ -34,6 +39,11 @@ jobs:
         with:
           go-version-file: ./go.mod
 
+      - name: Decrypt assets
+        env:
+          SAPPHIRE_KEY: ${{ secrets.SAPPHIRE_KEY }}
+        run: make decrypt
+
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9
 
@@ -48,6 +58,11 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version-file: ./go.mod
+
+      - name: Decrypt assets
+        env:
+          SAPPHIRE_KEY: ${{ secrets.SAPPHIRE_KEY }}
+        run: make decrypt
 
       - name: Build desktop
         run: go build .

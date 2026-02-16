@@ -1,3 +1,6 @@
 package gba
 
-var bios [16384]byte
+import _ "embed"
+
+//go:embed bios.gba
+var bios []byte

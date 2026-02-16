@@ -19,18 +19,18 @@ jobs:
       - name: Decrypt assets
         env:
           SAPPHIRE_KEY: ${{ secrets.SAPPHIRE_KEY }}
-        run: make generate
+        run: make decrypt
 
       - name: Build macOS universal binary
         run: |
-          CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -tags embed_bios -o build/sapphire-amd64 .
-          CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -tags embed_bios -o build/sapphire-arm64 .
+          CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -o build/sapphire-amd64 .
+          CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -o build/sapphire-arm64 .
           lipo -create -output build/sapphire build/sapphire-amd64 build/sapphire-arm64
           mkdir -p Sapphire.app/Contents/MacOS/
           cp build/sapphire Sapphire.app/Contents/MacOS/sapphire
 
       - name: Build WASM
-        run: GOOS=js GOARCH=wasm go build -tags "embed_bios embed_gamepak" -o build/sapphire.wasm ./cmd/web
+        run: GOOS=js GOARCH=wasm go build -o build/sapphire.wasm ./cmd/web
 
       - name: Package macOS
         run: |
