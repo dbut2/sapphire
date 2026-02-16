@@ -16,8 +16,16 @@ func NewEmu(gamepak []byte) *Emulator {
 }
 
 func (e *Emulator) PreBoot() {
-	SetIORegister(e.CPU.Memory, DISPCNT, 0x80)
-	e.CPU.exception(0x08)
+	e.CPU.R13_irq = 0x03007FA0
+	e.CPU.R13_svc = 0x03007FE0
+
+	e.CPU.CPSR = SYS
+	e.CPU.R[13] = 0x03007F00
+
+	SetIORegister(e.Memory, POSTFLG, uint8(1))
+
+	e.CPU.R[15] = 0x08000000
+	e.CPU.prefetchFlush()
 }
 
 func (e *Emulator) Boot() {
@@ -28,7 +36,9 @@ func (e *Emulator) Boot() {
 func (e *Emulator) Run() {
 	ticker := time.NewTicker(16739000 * time.Nanosecond)
 	for {
-		<-ticker.C
+		if !e.FastForward {
+			<-ticker.C
+		}
 		e.frame()
 	}
 }
@@ -39,13 +49,15 @@ func (e *Emulator) frame() {
 	}
 
 	e.LCD.DrawFrame()
+	e.Flash.Flush()
 }
 
 func (e *Emulator) scanline(line uint16) {
-	SetIORegister(e.Memory, VCOUNT, line)
+	SetIORegister16(e.Memory, VCOUNT, line)
 
-	dispstat := ReadIORegister(e.Memory, DISPSTAT)
+	dispstat := ReadIORegister16(e.Memory, DISPSTAT)
 
+	prevVBlank := ReadBits(dispstat, 0, 1)
 	VBlank := (159 - (line % 227)) >> 15 // 0: 0-159, 1: 160-226, 0: 227
 	LYC := ReadBits(dispstat, 8, 8)
 	VCounter := isEqual(line, LYC)
@@ -53,28 +65,77 @@ func (e *Emulator) scanline(line uint16) {
 	dispstat = SetBits(dispstat, 0, 1, VBlank)
 	dispstat = SetBits(dispstat, 2, 1, VCounter)
 
-	SetIORegister(e.Memory, DISPSTAT, dispstat)
+	SetIORegister16(e.Memory, DISPSTAT, dispstat)
 
-	blank := ReadBits(ReadIORegister(e.Memory, DISPCNT), 7, 1)
+	if VBlank == 1 && prevVBlank == 0 {
+		if ReadBits(dispstat, 3, 1) == 1 {
+			ifReg := ReadIORegister16(e.Memory, IF)
+			SetIORegister16(e.Memory, IF, ifReg|0x0001)
+		}
+		e.DMA.transfer(DMAVBlank)
+	}
+
+	if line == 0 {
+		e.LCD.LatchAffineRefs()
+	}
+
+	if VCounter == 1 && ReadBits(dispstat, 5, 1) == 1 {
+		ifReg := ReadIORegister16(e.Memory, IF)
+		SetIORegister16(e.Memory, IF, ifReg|0x0004)
+	}
 
 	for e.CPU.cycles = e.CPU.cycles % 1232; e.CPU.cycles < 1232; {
 		e.step()
 	}
 
+	blank := ReadBits(ReadIORegister16(e.Memory, DISPCNT), 7, 1)
+
 	if line < 160 {
 		e.LCD.DrawLine(line, blank)
+		e.LCD.IncrementAffineRefs()
+	}
+
+	if ReadBits(dispstat, 4, 1) == 1 {
+		ifReg := ReadIORegister16(e.Memory, IF)
+		SetIORegister16(e.Memory, IF, ifReg|0x0002)
+	}
+	if line < 160 {
+		e.DMA.transfer(DMAHBlank)
 	}
 }
 
 func (e *Emulator) step() {
-	dispstat := ReadIORegister(e.Memory, DISPSTAT)
+	dispstat := ReadIORegister16(e.Memory, DISPSTAT)
 	HBlank := (1005 - e.CPU.cycles) >> 31 // 0: 0-1005, 1: 1006-1231
 	dispstat = SetBits(dispstat, 1, 1, uint16(HBlank))
-	SetIORegister(e.Memory, DISPSTAT, dispstat)
+	SetIORegister16(e.Memory, DISPSTAT, dispstat)
+
+	if e.CPU.cpsrIRQDisable() == 0 {
+		ime := ReadIORegister16(e.Memory, IME)
+		ie := ReadIORegister16(e.Memory, IE)
+		ifReg := ReadIORegister16(e.Memory, IF)
+		if ime > 0 && ie&ifReg > 0 {
+			e.CPU.halted = false
+			e.CPU.exception(0x18)
+		}
+	} else if e.CPU.halted {
+		ime := ReadIORegister16(e.Memory, IME)
+		ie := ReadIORegister16(e.Memory, IE)
+		ifReg := ReadIORegister16(e.Memory, IF)
+		if ime > 0 && ie&ifReg > 0 {
+			e.CPU.halted = false
+		}
+	}
+
+	if e.CPU.halted {
+		e.CPU.cycle(1)
+		return
+	}
 
 	preCount := e.CPU.cycles
 	e.stepCPU()
 	postCount := e.CPU.cycles
 
-	e.Timer.Tick(postCount - preCount)
+	elapsed := postCount - preCount
+	e.Timer.Tick(elapsed)
 }

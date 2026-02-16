@@ -1,4 +1,4 @@
-module github.com/dbut2/sapphire
+module dbut.dev/sapphire
 
 go 1.25.0
 

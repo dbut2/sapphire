@@ -2,6 +2,7 @@ package gba
 
 import (
 	"fmt"
+	"math"
 )
 
 type CPU struct {
@@ -12,6 +13,7 @@ type CPU struct {
 	flushed    bool
 
 	cycles uint32
+	halted bool
 }
 
 func NewCPU(m *Motherboard) *CPU {
@@ -54,11 +56,18 @@ func (c *CPU) Step() {
 	c.flushed = false
 }
 
-func noins(instruction uint32) {
-	panic(fmt.Sprintf("nothing to do for: %032b", instruction))
+func (c *CPU) noins(instruction uint32) {
+	fmt.Printf("UND: instr=%08X PC=%08X CPSR=%08X state=%d\n", instruction, c.curr, c.CPSR, c.cpsrState())
+	c.exception(0x04)
 }
 
 func (c *CPU) prefetchFlush() {
+	switch c.cpsrState() {
+	case 0:
+		c.R[15] &= ^uint32(3)
+	case 1:
+		c.R[15] &= ^uint32(1)
+	}
 	c.curr = c.R[15]
 	c.pcInc()
 	c.next = c.R[15]
@@ -67,11 +76,9 @@ func (c *CPU) prefetchFlush() {
 }
 
 type CPURegisters struct {
-	// registers to interact
 	R    [16]uint32
 	CPSR uint32
 
-	// registers to be swapped on mode change
 	R0       uint32
 	R1       uint32
 	R2       uint32
@@ -111,90 +118,98 @@ type CPURegisters struct {
 }
 
 func (c *CPU) registerAddr(mode uint32, r uint32) *uint32 {
-	return map[uint32]*uint32{
-		0: &c.R0,
-		1: &c.R1,
-		2: &c.R2,
-		3: &c.R3,
-		4: &c.R4,
-		5: &c.R5,
-		6: &c.R6,
-		7: &c.R7,
-		8: map[uint32]*uint32{
-			USR: &c.R8,
-			FIQ: &c.R8_fiq,
-			IRQ: &c.R8,
-			SVC: &c.R8,
-			ABT: &c.R8,
-			UND: &c.R8,
-			SYS: &c.R8,
-		}[mode],
-		9: map[uint32]*uint32{
-			USR: &c.R9,
-			FIQ: &c.R9_fiq,
-			IRQ: &c.R9,
-			SVC: &c.R9,
-			ABT: &c.R9,
-			UND: &c.R9,
-			SYS: &c.R9,
-		}[mode],
-		10: map[uint32]*uint32{
-			USR: &c.R10,
-			FIQ: &c.R10_fiq,
-			IRQ: &c.R10,
-			SVC: &c.R10,
-			ABT: &c.R10,
-			UND: &c.R10,
-			SYS: &c.R10,
-		}[mode],
-		11: map[uint32]*uint32{
-			USR: &c.R11,
-			FIQ: &c.R11_fiq,
-			IRQ: &c.R11,
-			SVC: &c.R11,
-			ABT: &c.R11,
-			UND: &c.R11,
-			SYS: &c.R11,
-		}[mode],
-		12: map[uint32]*uint32{
-			USR: &c.R12,
-			FIQ: &c.R12_fiq,
-			IRQ: &c.R12,
-			SVC: &c.R12,
-			ABT: &c.R12,
-			UND: &c.R12,
-			SYS: &c.R12,
-		}[mode],
-		13: map[uint32]*uint32{
-			USR: &c.R13,
-			FIQ: &c.R13_fiq,
-			IRQ: &c.R13_irq,
-			SVC: &c.R13_svc,
-			ABT: &c.R13_abt,
-			UND: &c.R13_und,
-			SYS: &c.R13,
-		}[mode],
-		14: map[uint32]*uint32{
-			USR: &c.R14,
-			FIQ: &c.R14_fiq,
-			IRQ: &c.R14_irq,
-			SVC: &c.R14_svc,
-			ABT: &c.R14_abt,
-			UND: &c.R14_und,
-			SYS: &c.R14,
-		}[mode],
-		15: &c.R15,
-	}[r]
+	switch r {
+	case 0:
+		return &c.R0
+	case 1:
+		return &c.R1
+	case 2:
+		return &c.R2
+	case 3:
+		return &c.R3
+	case 4:
+		return &c.R4
+	case 5:
+		return &c.R5
+	case 6:
+		return &c.R6
+	case 7:
+		return &c.R7
+	case 8:
+		if mode == FIQ {
+			return &c.R8_fiq
+		}
+		return &c.R8
+	case 9:
+		if mode == FIQ {
+			return &c.R9_fiq
+		}
+		return &c.R9
+	case 10:
+		if mode == FIQ {
+			return &c.R10_fiq
+		}
+		return &c.R10
+	case 11:
+		if mode == FIQ {
+			return &c.R11_fiq
+		}
+		return &c.R11
+	case 12:
+		if mode == FIQ {
+			return &c.R12_fiq
+		}
+		return &c.R12
+	case 13:
+		switch mode {
+		case FIQ:
+			return &c.R13_fiq
+		case IRQ:
+			return &c.R13_irq
+		case SVC:
+			return &c.R13_svc
+		case ABT:
+			return &c.R13_abt
+		case UND:
+			return &c.R13_und
+		default:
+			return &c.R13
+		}
+	case 14:
+		switch mode {
+		case FIQ:
+			return &c.R14_fiq
+		case IRQ:
+			return &c.R14_irq
+		case SVC:
+			return &c.R14_svc
+		case ABT:
+			return &c.R14_abt
+		case UND:
+			return &c.R14_und
+		default:
+			return &c.R14
+		}
+	default:
+		return &c.R15
+	}
 }
 
 func (c *CPU) spsrAddr(mode uint32) *uint32 {
-	return map[uint32]*uint32{
-		FIQ: &c.SPSR_fiq,
-		IRQ: &c.SPSR_irq,
-		SVC: &c.SPSR_svc,
-		ABT: &c.SPSR_abt,
-		UND: &c.SPSR_und,
-	}[mode]
+	switch mode {
+	case FIQ:
+		return &c.SPSR_fiq
+	case IRQ:
+		return &c.SPSR_irq
+	case SVC:
+		return &c.SPSR_svc
+	case ABT:
+		return &c.SPSR_abt
+	case UND:
+		return &c.SPSR_und
+	default:
+		return &c.CPSR
+	}
 }
 
 const (
@@ -226,18 +241,16 @@ func (c *CPU) cpsrSetMode(value uint32) {
 	prevMode := c.cpsrMode() | 0b10000
 	nextMode := value | 0b10000
 
-	wasPrivileged := prevMode != USR && prevMode != SYS
-	nowPrivileged := nextMode != USR && nextMode != SYS
-
-	if nowPrivileged {
-		*c.spsrAddr(nextMode) = c.CPSR
-	}
-	if wasPrivileged {
-		c.CPSR = *c.spsrAddr(prevMode)
+	if prevMode == nextMode {
+		c.CPSR = SetBits(c.CPSR, 0, 5, value)
+		return
 	}
 
 	for i := uint32(0); i <= 15; i++ {
 		*c.registerAddr(prevMode, i) = c.R[i]
+	}
+
+	for i := uint32(0); i <= 15; i++ {
 		c.R[i] = *c.registerAddr(nextMode, i)
 	}
 
@@ -301,26 +314,38 @@ func (c *CPU) cpsrSetV(value bool) {
 }
 
 func (c *CPU) exception(vector uint32) {
+	oldCPSR := c.CPSR
+
+	var newMode uint32
 	switch vector {
 	case 0x00: // reset
-		c.cpsrSetMode(SVC)
+		newMode = SVC
 	case 0x04: // undefined
-		c.cpsrSetMode(UND)
+		newMode = UND
 	case 0x08: // swi
-		c.cpsrSetMode(SVC)
+		newMode = SVC
 	case 0x0C: // prefetch abort
-		c.cpsrSetMode(ABT)
+		newMode = ABT
 	case 0x10: // data
-		c.cpsrSetMode(ABT)
+		newMode = ABT
 	case 0x14: // address exceed
-		c.cpsrSetMode(SVC)
+		newMode = SVC
 	case 0x18: // irq
-		c.cpsrSetMode(IRQ)
+		newMode = IRQ
 	case 0x1C: // fiq
-		c.cpsrSetMode(FIQ)
+		newMode = FIQ
 	}
 
-	c.R[14] = c.R[15]
+	c.cpsrSetMode(newMode)
+	*c.spsrAddr(newMode) = oldCPSR
+
+	switch vector {
+	case 0x08, 0x04:
+		c.R[14] = c.next
+	default:
+		c.R[14] = c.curr + 4
+	}
+
 	c.cpsrSetState(0)
 	c.cpsrSetIRQDisable(1)
 	switch vector {
@@ -375,9 +400,25 @@ func (c *CPU) cond(cond uint32) bool {
 }
 
 const (
-	SoftReset        uint32 = 0x00
-	RegisterRamReset uint32 = 0x01
-	CpuSet           uint32 = 0x0B
+	SoftReset         uint32 = 0x00
+	RegisterRamReset  uint32 = 0x01
+	SWIHalt           uint32 = 0x02
+	SWIIntrWait       uint32 = 0x04
+	SWIVBlankIntrWait uint32 = 0x05
+	SWIDiv            uint32 = 0x06
+	SWIDivArm         uint32 = 0x07
+	SWISqrt           uint32 = 0x08
+	SWIArcTan         uint32 = 0x09
+	SWIArcTan2        uint32 = 0x0A
+	CpuSet            uint32 = 0x0B
+	SWICpuFastSet     uint32 = 0x0C
+	SWIBitUnPack      uint32 = 0x10
+	SWILz77UnCompWram uint32 = 0x11
+	SWILz77UnCompVram uint32 = 0x12
+	SWIRLUnCompWram   uint32 = 0x14
+	SWIRLUnCompVram   uint32 = 0x15
+	SWIObjAffineSet   uint32 = 0x0F
+	SWIBgAffineSet    uint32 = 0x0E
 )
 
 func (c *CPU) SWI(comment uint32) {
@@ -388,7 +429,7 @@ func (c *CPU) SWI(comment uint32) {
 		c.R13_irq = 0x03007FA0
 		flag := c.Memory.Read8(0x3007FFA, true, false)
 		for i := uint32(0x3007E00); i <= 0x3007FFF; i++ {
-			c.Memory.Set8(i, 0, true, false) // todo: replace with clear
+			c.Memory.Set8(i, 0, true, false)
 		}
 		if flag == 0 {
 			c.R[14] = 0x08000000
@@ -399,6 +440,96 @@ func (c *CPU) SWI(comment uint32) {
 		c.R[15] = c.R[14]
 		c.prefetchFlush()
 		return
+
+	case RegisterRamReset:
+		flags := c.R[0]
+		if flags&0x01 != 0 {
+			c.Memory.ClearBlock(WRAM1)
+		}
+		if flags&0x02 != 0 {
+			c.Memory.ClearBlock(WRAM2)
+		}
+		if flags&0x04 != 0 {
+			c.Memory.ClearBlock(Palette)
+		}
+		if flags&0x08 != 0 {
+			c.Memory.ClearBlock(VRAM)
+		}
+		if flags&0x10 != 0 {
+			c.Memory.ClearBlock(OAM)
+		}
+		SetIORegister(c.Memory, DISPCNT, uint16(0x0080))
+
+	case SWIHalt:
+		c.halted = true
+
+	case SWIIntrWait:
+		if c.R[0] == 1 {
+			ifReg := ReadIORegister(c.Memory, IF)
+			ifReg &= ^uint16(c.R[1])
+			SetIORegister(c.Memory, IF, ifReg)
+		}
+		c.halted = true
+
+	case SWIVBlankIntrWait:
+		ifReg := ReadIORegister(c.Memory, IF)
+		ifReg &= ^uint16(1)
+		SetIORegister(c.Memory, IF, ifReg)
+		c.halted = true
+
+	case SWIDiv:
+		num := int32(c.R[0])
+		den := int32(c.R[1])
+		if den == 0 {
+			c.R[0] = 0
+			c.R[1] = 0
+			c.R[3] = 0
+		} else {
+			c.R[0] = uint32(num / den)
+			c.R[1] = uint32(num % den)
+			result := num / den
+			if result < 0 {
+				c.R[3] = uint32(-result)
+			} else {
+				c.R[3] = uint32(result)
+			}
+		}
+
+	case SWIDivArm:
+		num := int32(c.R[1])
+		den := int32(c.R[0])
+		if den == 0 {
+			c.R[0] = 0
+			c.R[1] = 0
+			c.R[3] = 0
+		} else {
+			c.R[0] = uint32(num / den)
+			c.R[1] = uint32(num % den)
+			result := num / den
+			if result < 0 {
+				c.R[3] = uint32(-result)
+			} else {
+				c.R[3] = uint32(result)
+			}
+		}
+
+	case SWISqrt:
+		c.R[0] = uint32(math.Sqrt(float64(c.R[0])))
+
+	case SWIArcTan:
+		tan := float64(int16(c.R[0])) / 16384.0
+		result := math.Atan(tan) / (2 * math.Pi) * 0x10000
+		c.R[0] = uint32(int16(result))
+
+	case SWIArcTan2:
+		x := float64(int16(c.R[0]))
+		y := float64(int16(c.R[1]))
+		result := math.Atan2(y, x) / (2 * math.Pi) * 0x10000
+		if result < 0 {
+			result += 0x10000
+		}
+		c.R[0] = uint32(uint16(result))
+
 	case CpuSet:
 		source := c.R[0]
 		destination := c.R[1]
@@ -410,81 +541,273 @@ func (c *CPU) SWI(comment uint32) {
 		case fill == 0 && datasize == 0:
 			for i := uint32(0); i < count; i++ {
 				offset := i << 1
-				value := c.Memory.Read16(source+offset, true, false)
-				c.Memory.Set16(destination+offset, value, true, false)
+				value := c.Memory.Read16(source+offset, false, false)
+				c.Memory.Set16(destination+offset, value, false, false)
 			}
 		case fill == 0 && datasize == 1:
 			for i := uint32(0); i < count; i++ {
 				offset := i << 2
-				value := c.Memory.Read32(source+offset, true, false)
-				c.Memory.Set32(destination+offset, value, true, false)
+				value := c.Memory.Read32(source+offset, false, false)
+				c.Memory.Set32(destination+offset, value, false, false)
 			}
 		case fill == 1 && datasize == 0:
-			value := c.Memory.Read16(source, true, false)
+			value := c.Memory.Read16(source, false, false)
 			for i := uint32(0); i < count; i++ {
 				offset := i << 1
-				c.Memory.Set16(destination+offset, value, true, false)
+				c.Memory.Set16(destination+offset, value, false, false)
 			}
 		case fill == 1 && datasize == 1:
-			value := c.Memory.Read32(source, true, false)
+			value := c.Memory.Read32(source, false, false)
 			for i := uint32(0); i < count; i++ {
 				offset := i << 2
-				c.Memory.Set32(destination+offset, value, true, false)
+				c.Memory.Set32(destination+offset, value, false, false)
 			}
 		}
-	case RegisterRamReset:
-		c.exception(0x08)
-		return
 
-		clearWram1 := ReadBits(c.R[0], 0, 1)
-		if clearWram1 == 1 {
-			c.Memory.ClearBlock(WRAM1)
+	case SWICpuFastSet:
+		source := c.R[0]
+		destination := c.R[1]
+		fill := ReadBits(c.R[2], 24, 1)
+		count := ReadBits(c.R[2], 0, 21) &^ uint32(7)
+
+		if fill == 0 {
+			for i := uint32(0); i < count; i++ {
+				offset := i << 2
+				value := c.Memory.Read32(source+offset, false, false)
+				c.Memory.Set32(destination+offset, value, false, false)
+			}
+		} else {
+			value := c.Memory.Read32(source, false, false)
+			for i := uint32(0); i < count; i++ {
+				offset := i << 2
+				c.Memory.Set32(destination+offset, value, false, false)
+			}
 		}
 
-		clearWram2 := ReadBits(c.R[0], 1, 1)
-		if clearWram2 == 1 {
-			c.Memory.ClearBlock(WRAM2)
-		}
+	case SWIBitUnPack:
+		c.swibitUnPack()
 
-		clearPalette := ReadBits(c.R[0], 2, 1)
-		if clearPalette == 1 {
-			c.Memory.ClearBlock(Palette)
-		}
+	case SWILz77UnCompWram:
+		c.swilz77UnComp(false)
+	case SWILz77UnCompVram:
+		c.swilz77UnComp(true)
 
-		clearVRAM := ReadBits(c.R[0], 3, 1)
-		if clearVRAM == 1 {
-			c.Memory.ClearBlock(VRAM)
-		}
+	case SWIRLUnCompWram:
+		c.swirlUnComp(false)
+	case SWIRLUnCompVram:
+		c.swirlUnComp(true)
 
-		clearOAM := ReadBits(c.R[0], 4, 1)
-		if clearOAM == 1 {
-			c.Memory.ClearBlock(OAM)
-		}
+	case SWIObjAffineSet:
+		c.swiobjAffineSet()
 
-		resetSIO := ReadBits(c.R[0], 5, 1)
-		if resetSIO == 1 {
-			_ = ""
-			// todo
-		}
+	case SWIBgAffineSet:
+		c.swibgAffineSet()
 
-		resetSound := ReadBits(c.R[0], 6, 1)
-		if resetSound == 1 {
-			_ = ""
-			// todo
-		}
-
-		resetOther := ReadBits(c.R[0], 7, 1)
-		if resetOther == 1 {
-			_ = ""
-			// todo
-		}
-
-		SetIORegister(c.Memory, DISPCNT, 0x0080)
 	default:
-		noComment(comment)
+		fmt.Printf("Warning: unhandled SWI 0x%02X\n", comment)
 	}
 }
 
-func noComment(comment uint32) {
-	panic(fmt.Sprintf("nothing to do for comment: 0x%02x", comment))
+func (c *CPU) swilz77UnComp(toVRAM bool) {
+	src := c.R[0]
+	dst := c.R[1]
+
+	header := c.Memory.Read32(src, false, false)
+	decompSize := header >> 8
+	src += 4
+
+	var buf [2]uint8
+	bufIdx := 0
+
+	writeByte := func(b uint8) {
+		if toVRAM {
+			buf[bufIdx] = b
+			bufIdx++
+			if bufIdx == 2 {
+				c.Memory.Set16(dst&^1, uint16(buf[0])|uint16(buf[1])<<8, false, false)
+				bufIdx = 0
+			}
+		} else {
+			c.Memory.Set8(dst, b, false, false)
+		}
+		dst++
+	}
+
+	written := uint32(0)
+	for written < decompSize {
+		flags := c.Memory.Read8(src, false, false)
+		src++
+
+		for i := 7; i >= 0 && written < decompSize; i-- {
+			if flags&(1<<i) == 0 {
+				writeByte(c.Memory.Read8(src, false, false))
+				src++
+				written++
+			} else {
+				b1 := uint32(c.Memory.Read8(src, false, false))
+				b2 := uint32(c.Memory.Read8(src+1, false, false))
+				src += 2
+
+				length := (b1 >> 4) + 3
+				offset := ((b1 & 0xF) << 8) | b2
+
+				for j := uint32(0); j < length && written < decompSize; j++ {
+					writeByte(c.Memory.Read8(dst-offset-1, false, false))
+					written++
+				}
+			}
+		}
+	}
+}
+
+func (c *CPU) swirlUnComp(toVRAM bool) {
+	src := c.R[0]
+	dst := c.R[1]
+
+	header := c.Memory.Read32(src, false, false)
+	decompSize := header >> 8
+	src += 4
+
+	var buf [2]uint8
+	bufIdx := 0
+
+	writeByte := func(b uint8) {
+		if toVRAM {
+			buf[bufIdx] = b
+			bufIdx++
+			if bufIdx == 2 {
+				c.Memory.Set16(dst&^1, uint16(buf[0])|uint16(buf[1])<<8, false, false)
+				bufIdx = 0
+			}
+		} else {
+			c.Memory.Set8(dst, b, false, false)
+		}
+		dst++
+	}
+
+	written := uint32(0)
+	for written < decompSize {
+		flags := c.Memory.Read8(src, false, false)
+		src++
+
+		if flags&0x80 != 0 {
+			length := uint32(flags&0x7F) + 3
+			data := c.Memory.Read8(src, false, false)
+			src++
+			for j := uint32(0); j < length && written < decompSize; j++ {
+				writeByte(data)
+				written++
+			}
+		} else {
+			length := uint32(flags&0x7F) + 1
+			for j := uint32(0); j < length && written < decompSize; j++ {
+				writeByte(c.Memory.Read8(src, false, false))
+				src++
+				written++
+			}
+		}
+	}
+}
+
+func (c *CPU) swibitUnPack() {
+	src := c.R[0]
+	dst := c.R[1]
+	info := c.R[2]
+
+	srcLen := uint32(c.Memory.Read16(info, false, false))
+	srcWidth := uint32(c.Memory.Read8(info+2, false, false))
+	dstWidth := uint32(c.Memory.Read8(info+3, false, false))
+	dataOffset := c.Memory.Read32(info+4, false, false)
+	zeroFlag := dataOffset & 0x80000000
+	dataOffset &= 0x7FFFFFFF
+
+	srcBits := uint32(0)
+	srcBuf := uint32(0)
+	dstBuf := uint32(0)
+	dstBits := uint32(0)
+
+	for i := uint32(0); i < srcLen; i++ {
+		srcBuf = uint32(c.Memory.Read8(src+i, false, false))
+		for srcBits = 0; srcBits < 8; srcBits += srcWidth {
+			data := (srcBuf >> srcBits) & ((1 << srcWidth) - 1)
+			if data != 0 || zeroFlag != 0 {
+				data += dataOffset
+			}
+			dstBuf |= data << dstBits
+			dstBits += dstWidth
+			if dstBits >= 32 {
+				c.Memory.Set32(dst, dstBuf, false, false)
+				dst += 4
+				dstBuf = 0
+				dstBits = 0
+			}
+		}
+	}
+}
+
+func (c *CPU) swiobjAffineSet() {
+	src := c.R[0]
+	dst := c.R[1]
+	count := c.R[2]
+	offset := c.R[3]
+
+	for i := uint32(0); i < count; i++ {
+		sx := float64(int16(c.Memory.Read16(src, false, false))) / 256.0
+		sy := float64(int16(c.Memory.Read16(src+2, false, false))) / 256.0
+		angle := float64(uint16(c.Memory.Read16(src+4, false, false))) / 65536.0 * 2 * math.Pi
+		src += 8
+
+		sin := math.Sin(angle)
+		cos := math.Cos(angle)
+
+		pa := int16(cos * sx * 256)
+		pb := int16(-sin * sx * 256)
+		pc := int16(sin * sy * 256)
+		pd := int16(cos * sy * 256)
+
+		c.Memory.Set16(dst, uint16(pa), false, false)
+		dst += offset
+		c.Memory.Set16(dst, uint16(pb), false, false)
+		dst += offset
+		c.Memory.Set16(dst, uint16(pc), false, false)
+		dst += offset
+		c.Memory.Set16(dst, uint16(pd), false, false)
+		dst += offset
+	}
+}
+
+func (c *CPU) swibgAffineSet() {
+	src := c.R[0]
+	dst := c.R[1]
+	count := c.R[2]
+
+	for i := uint32(0); i < count; i++ {
+		origX := int32(c.Memory.Read32(src, false, false))
+		origY := int32(c.Memory.Read32(src+4, false, false))
+		dispX := int16(c.Memory.Read16(src+8, false, false))
+		dispY := int16(c.Memory.Read16(src+10, false, false))
+		sx := float64(int16(c.Memory.Read16(src+12, false, false))) / 256.0
+		sy := float64(int16(c.Memory.Read16(src+14, false, false))) / 256.0
+		angle := float64(uint16(c.Memory.Read16(src+16, false, false))) / 65536.0 * 2 * math.Pi
+		src += 20
+
+		sin := math.Sin(angle)
+		cos := math.Cos(angle)
+
+		pa := int16(cos * sx * 256)
+		pb := int16(-sin * sx * 256)
+		pc := int16(sin * sy * 256)
+		pd := int16(cos * sy * 256)
+
+		startX := origX - int32(pa)*int32(dispX) - int32(pb)*int32(dispY)
+		startY := origY - int32(pc)*int32(dispX) - int32(pd)*int32(dispY)
+
+		c.Memory.Set16(dst, uint16(pa), false, false)
+		c.Memory.Set16(dst+2, uint16(pb), false, false)
+		c.Memory.Set16(dst+4, uint16(pc), false, false)
+		c.Memory.Set16(dst+6, uint16(pd), false, false)
+		c.Memory.Set32(dst+8, uint32(startX), false, false)
+		c.Memory.Set32(dst+12, uint32(startY), false, false)
+		dst += 16
+	}
 }

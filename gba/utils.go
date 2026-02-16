@@ -82,11 +82,19 @@ func ShiftLSR(value, amount uint32) (uint32, bool) {
 }
 
 func ShiftASR(value, amount uint32) (uint32, bool) {
-	s := value & (1 << 31)
-	for i := uint32(0); i < amount; i++ {
-		value = (value >> 1) | s
+	if amount == 0 {
+		return value, false
 	}
-	return value, value&(1<<(amount-1)) > 0
+	if amount >= 32 {
+		carry := (value >> 31) & 1
+		if value&(1<<31) != 0 {
+			return 0xFFFFFFFF, carry > 0
+		}
+		return 0, carry > 0
+	}
+	carry := (value >> (amount - 1)) & 1
+	result := uint32(int32(value) >> amount)
+	return result, carry > 0
 }
 
 func ShiftROR(value, amount uint32) (uint32, bool) {

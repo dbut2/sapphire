@@ -3,8 +3,11 @@ package gba
 type Timer struct {
 	*Motherboard
 
-	timers  [4]uint32
-	reloads [4]uint16
+	prescalerAccum [4]uint32
+	reloads        [4]uint16
+	counters       [4]uint16
+	control        [4]uint16
+	enabled        [4]bool
 }
 
 func NewTimer(m *Motherboard) *Timer {
@@ -17,67 +20,53 @@ func (t *Timer) Tick(cycles uint32) {
 	incs := [4]uint32{}
 
 	for i := range prescalerValues {
-		t.timers[i] += cycles
-
-		if t.timers[i] >= prescalerValues[i] {
-			incs[i] = prescalerValues[i]
-			t.timers[i] %= prescalerValues[i]
-		}
+		t.prescalerAccum[i] += cycles
+		incs[i] = t.prescalerAccum[i] / prescalerValues[i]
+		t.prescalerAccum[i] %= prescalerValues[i]
 	}
 
-	timer, overflowed := t.tick(TM0CNT_L, TM0CNT_H, incs, false)
-	SetIORegister(t.Memory, TM0CNT_L, timer)
-
-	timer, overflowed = t.tick(TM1CNT_L, TM1CNT_H, incs, overflowed)
-	SetIORegister(t.Memory, TM1CNT_L, timer)
-
-	timer, overflowed = t.tick(TM2CNT_L, TM2CNT_H, incs, overflowed)
-	SetIORegister(t.Memory, TM2CNT_L, timer)
-
-	timer, _ = t.tick(TM3CNT_L, TM3CNT_H, incs, overflowed)
-	SetIORegister(t.Memory, TM3CNT_L, timer)
+	overflowed := t.tick(0, incs, false)
+	overflowed = t.tick(1, incs, overflowed)
+	overflowed = t.tick(2, incs, overflowed)
+	t.tick(3, incs, overflowed)
 }
 
-func (t *Timer) tick(regL, regH IORegister[uint16], incs [4]uint32, prevOverflowed bool) (uint16, bool) {
-	cntL := ReadIORegister(t.Memory, regL)
-	cntH := ReadIORegister(t.Memory, regH)
-
-	prescaler := ReadBits(cntH, 0, 2)
-	countUpTiming := ReadBits(cntH, 2, 1)
-	irqEnable := ReadBits(cntH, 6, 1)
-	startStop := ReadBits(cntH, 7, 1)
-
-	if startStop == 0 {
-		return cntL, false
+func (t *Timer) tick(idx int, incs [4]uint32, prevOverflowed bool) bool {
+	if !t.enabled[idx] {
+		return false
 	}
+
+	cntH := t.control[idx]
+	prescaler := cntH & 3
+	countUpTiming := (cntH >> 2) & 1
 
 	var inc uint32
-	var overflowed bool
-
-	switch countUpTiming {
-	case 0:
+	if countUpTiming == 0 {
 		inc = incs[prescaler]
-	case 1:
-		if prevOverflowed {
-			inc = 1
-		} else {
-			inc = 0
-		}
+	} else if prevOverflowed {
+		inc = 1
 	}
 
-	inced := uint32(cntL) + inc
-	cntL = uint16(inced)
-	if inced > 1<<16-1 {
-		overflowed = true
+	inced := uint32(t.counters[idx]) + inc
+	t.counters[idx] = uint16(inced)
 
-		cntL = t.reloads[timerIndex[regL]]
+	if inced > 0xFFFF {
+		t.counters[idx] = t.reloads[idx]
 
-		if irqEnable == 1 {
-			t.CPU.exception(0x18)
+		if (cntH>>6)&1 == 1 { // IRQ enable
+			ifReg := ReadIORegister16(t.Memory, IF)
+			SetIORegister16(t.Memory, IF, ifReg|uint16(1<<(3+idx)))
 		}
+		return true
 	}
 
-	return cntL, overflowed
+	return false
+}
+
+func (t *Timer) SyncToMemory() {
+	for i, reg := range [4]IORegister[uint16]{TM0CNT_L, TM1CNT_L, TM2CNT_L, TM3CNT_L} {
+		SetIORegister16(t.Memory, reg, t.counters[i])
+	}
 }
 
 func (t *Timer) Set(address uint32, value uint16) {
@@ -85,7 +74,21 @@ func (t *Timer) Set(address uint32, value uint16) {
 }
 
 func (t *Timer) Reload(address uint32) {
-	SetIORegister(t.Memory, indexTimer[timerAddrIndex[address]], t.reloads[timerAddrIndex[address]])
+	idx := timerAddrIndex[address]
+	t.counters[idx] = t.reloads[idx]
+	SetIORegister16(t.Memory, indexTimer[idx], t.reloads[idx])
+}
+
+func (t *Timer) OnControlWrite(address uint32, value uint16) {
+	idx := timerAddrIndex[address]
+	wasEnabled := t.enabled[idx]
+	t.control[idx] = value
+	t.enabled[idx] = (value>>7)&1 == 1
+
+	if !wasEnabled && t.enabled[idx] {
+		t.counters[idx] = t.reloads[idx]
+		SetIORegister16(t.Memory, indexTimer[idx], t.reloads[idx])
+	}
 }
 
 var timerIndex = map[IORegister[uint16]]int{
@@ -107,4 +110,8 @@ var timerAddrIndex = map[uint32]int{
 	uint32(TM1CNT_L): 1,
 	uint32(TM2CNT_L): 2,
 	uint32(TM3CNT_L): 3,
+	uint32(TM0CNT_H): 0,
+	uint32(TM1CNT_H): 1,
+	uint32(TM2CNT_H): 2,
+	uint32(TM3CNT_H): 3,
 }
