@@ -368,7 +368,7 @@ func (l *LCD) compositeLine(line uint16) {
 		sfxOk := !l.useWindow || l.winMask[x]&(1<<5) != 0
 
 		if l.objSemi[x] && topL == layerOBJ {
-			if sfxOk && (below>>botL)&1 == 1 {
+			if (below>>botL)&1 == 1 {
 				finalColor = blendAlpha(top, bot, eva, evb)
 			}
 		} else if sfxOk {
