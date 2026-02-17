@@ -1,0 +1,42 @@
+name: pre-release
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  pre-release:
+    permissions: write-all
+    name: Create pre-release
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Generate tag name
+        id: tag
+        run: |
+          git fetch --tags
+
+          LATEST_TAG=$(git tag -l 'v*.*.*' | grep -v '-' | sort -V | tail -n1)
+
+          VERSION=${LATEST_TAG#v}
+          MAJOR=$(echo $VERSION | cut -d. -f1)
+          MINOR=$(echo $VERSION | cut -d. -f2)
+          PATCH=$(echo $VERSION | cut -d. -f3)
+
+          MINOR=$((MINOR + 1))
+          NEXT_VERSION="v${MAJOR}.${MINOR}.0"
+
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          TAG_NAME="${NEXT_VERSION}-dev.${SHORT_SHA}"
+
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "Generated tag: $TAG_NAME (from latest: $LATEST_TAG)"
+
+      - name: Create pre-release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag_name }}
+          prerelease: true

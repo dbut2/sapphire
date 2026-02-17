@@ -2,7 +2,7 @@ name: Release
 
 on:
   release:
-    types: [created]
+    types: [published]
 
 jobs:
   release:
@@ -60,3 +60,12 @@ jobs:
           file: build/sapphire.wasm
           asset_name: sapphire.wasm
           tag: ${{ github.ref }}
+
+      - name: Trigger static site update
+        run: |
+          curl -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/dbut2/dbut2.github.io/dispatches \
+            -d '{"event_type":"update-external-resource","client_payload":{"resource":"sapphire","tag":"${{ github.ref_name }}"}}'
