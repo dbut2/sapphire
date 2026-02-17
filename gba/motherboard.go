@@ -20,6 +20,7 @@ func NewMotherboard(gamepak []byte) *Motherboard {
 	m.Timer = NewTimer(m)
 	m.Flash = NewFlash(m, gamepak)
 	m.GPIO = NewGPIO()
+	m.GPIO.RTC = NewRTC(m)
 
 	m.Memory.SetMemoryBlock(BIOS, bios[:])
 	m.Memory.SetMemoryBlock(GPRom1, gamepak)
