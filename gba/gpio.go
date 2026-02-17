@@ -4,6 +4,7 @@ type GPIO struct {
 	Data      uint8
 	Direction uint8
 	Readable  bool
+	RTC       *RTC
 }
 
 func NewGPIO() *GPIO {
@@ -16,7 +17,8 @@ func (g *GPIO) Read(addr uint32) uint8 {
 	}
 	switch addr &^ 1 {
 	case 0x080000C4:
-		return g.Data & ^g.Direction & 0x0F
+		data := (g.Data & g.Direction) | (g.RTC.Read() & ^g.Direction)
+		return data & 0x0F
 	case 0x080000C6:
 		return g.Direction & 0x0F
 	case 0x080000C8:
@@ -32,6 +34,7 @@ func (g *GPIO) Write(addr uint32, data uint8) {
 	switch addr &^ 1 {
 	case 0x080000C4:
 		g.Data = data & 0x0F
+		g.RTC.Write(data, g.Direction)
 	case 0x080000C6:
 		g.Direction = data & 0x0F
 	case 0x080000C8:
