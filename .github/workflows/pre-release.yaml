@@ -46,8 +46,8 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.generate-token.outputs.token }}
         run: |
-          gh release list --json tagName,isDraft,isPrerelease --limit 100 | \
-            jq -r '.[] | select(.isPrerelease and .isDraft) | .tagName' | \
+          gh release list --json tagName,isPrerelease --limit 100 | \
+            jq -r '.[] | select(.isPrerelease) | .tagName' | \
             while read tag; do
               gh release delete "$tag" --yes --cleanup-tag
             done
