@@ -1,7 +1,9 @@
 name: Test Dispatch
 
 on:
-  workflow_dispatch:
+  push:
+    branches-ignore:
+      - main
 
 jobs:
   test-dispatch:
@@ -21,13 +23,13 @@ jobs:
           repositories: dbut2.github.io
           owner: dbut2
 
-      - name: Get latest tag
+      - name: Get latest tag from main
         id: tag
         run: |
-          git fetch --tags
-          LATEST_TAG=$(git tag -l 'v*.*.*' | sort -V | tail -n1)
+          git fetch origin main --tags
+          LATEST_TAG=$(git tag -l 'v*.*.*' --merged origin/main | sort -V | tail -n1)
           echo "tag_name=$LATEST_TAG" >> $GITHUB_OUTPUT
-          echo "Using tag: $LATEST_TAG"
+          echo "Using tag from main: $LATEST_TAG"
 
       - name: Trigger static site update
         run: |
