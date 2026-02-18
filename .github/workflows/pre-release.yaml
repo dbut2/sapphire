@@ -14,6 +14,13 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Generate GitHub App token
+        id: generate-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.GH_APP_ID }}
+          private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
+
       - name: Generate tag name
         id: tag
         run: |
@@ -40,3 +47,4 @@ jobs:
         with:
           tag_name: ${{ steps.tag.outputs.tag_name }}
           prerelease: true
+          token: ${{ steps.generate-token.outputs.token }}
