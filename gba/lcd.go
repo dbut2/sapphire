@@ -15,8 +15,9 @@ const (
 
 type LCD struct {
 	*Motherboard
-	img  *image.RGBA
-	draw func()
+	img   *image.RGBA
+	front *image.RGBA
+	draw  func()
 
 	topColor [240]uint16
 	topLayer [240]uint8
@@ -37,15 +38,19 @@ func NewLCD(m *Motherboard) *LCD {
 	}
 }
 
-func (l *LCD) SetImage(img *image.RGBA) {
+func (l *LCD) setImage(img *image.RGBA) {
 	l.img = img
+	l.front = image.NewRGBA(img.Bounds())
 }
+
+func (l *LCD) Front() *image.RGBA { return l.front }
 
 func (l *LCD) SetDraw(draw func()) {
 	l.draw = draw
 }
 
 func (l *LCD) DrawFrame() {
+	copy(l.front.Pix, l.img.Pix)
 	l.draw()
 }
 
