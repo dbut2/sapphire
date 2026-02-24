@@ -2,7 +2,6 @@ package main
 
 import (
 	_ "embed"
-	"image"
 	"os"
 	"path/filepath"
 	"strings"
@@ -113,9 +112,7 @@ func (w *window) updateKeyInput() {
 func (w *window) Start() {
 	w.pressed = make(map[fyne.KeyName]bool)
 
-	img := image.NewRGBA(image.Rect(0, 0, 240, 160))
-	w.emu.LCD.SetImage(img)
-	cimg := canvas.NewImageFromImage(img)
+	cimg := canvas.NewImageFromImage(w.emu.LCD.Front())
 	cimg.ScaleMode = canvas.ImageScalePixels
 
 	w.emu.LCD.SetDraw(func() {

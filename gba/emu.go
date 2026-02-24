@@ -9,7 +9,7 @@ func NewEmu(gamepak []byte) *Emulator {
 	motherboard := NewMotherboard(gamepak)
 
 	img := image.NewRGBA(image.Rect(0, 0, 240, 160))
-	motherboard.LCD.SetImage(img)
+	motherboard.LCD.setImage(img)
 	motherboard.LCD.SetDraw(func() {})
 
 	return &Emulator{Motherboard: motherboard}

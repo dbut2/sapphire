@@ -5,7 +5,6 @@ package main
 import (
 	_ "embed"
 	"encoding/base64"
-	"image"
 	"os"
 	"syscall/js"
 
@@ -62,14 +61,12 @@ func main() {
 		localStorage.Call("setItem", saveKey, encoded)
 	})
 
-	img := image.NewRGBA(image.Rect(0, 0, width, height))
-	e.LCD.SetImage(img)
-
+	front := e.LCD.Front()
 	imageData := ctx.Call("createImageData", width, height)
 	jsPixels := js.Global().Get("Uint8Array").New(width * height * 4)
 
 	e.LCD.SetDraw(func() {
-		js.CopyBytesToJS(jsPixels, img.Pix)
+		js.CopyBytesToJS(jsPixels, front.Pix)
 		imageData.Get("data").Call("set", jsPixels)
 		ctx.Call("putImageData", imageData, 0, 0)
 	})
