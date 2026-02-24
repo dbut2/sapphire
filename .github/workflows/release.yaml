@@ -55,12 +55,36 @@ jobs:
 #          asset_name: sapphire.dmg
 #          tag: ${{ github.ref }}
 
-      - name: Upload ZIP
+#      - name: Upload ZIP
+#        uses: svenstaro/upload-release-action@v2
+#        with:
+#          repo_token: ${{ secrets.GITHUB_TOKEN }}
+#          file: build/sapphire.zip
+#          asset_name: sapphire.zip
+#          tag: ${{ github.ref }}
+
+      - name: Upload universal binary
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: build/sapphire.zip
-          asset_name: sapphire.zip
+          file: build/sapphire
+          asset_name: sapphire-universal
+          tag: ${{ github.ref }}
+
+      - name: Upload arm64 binary
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: build/sapphire-arm64
+          asset_name: sapphire-arm64
+          tag: ${{ github.ref }}
+
+      - name: Upload amd64 binary
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: build/sapphire-amd64
+          asset_name: sapphire-amd64
           tag: ${{ github.ref }}
 
       - name: Upload WASM
