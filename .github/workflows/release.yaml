@@ -42,18 +42,18 @@ jobs:
       - name: Build WASM
         run: GOOS=js GOARCH=wasm go build -o build/sapphire.wasm ./cmd/web
 
-      - name: Package macOS
-        run: |
-          zip -r build/sapphire.zip Sapphire.app
-          hdiutil create -volname Sapphire -srcfolder Sapphire.app -ov -format UDZO build/sapphire.dmg
+#      - name: Package macOS
+#        run: |
+#          zip -r build/sapphire.zip Sapphire.app
+#          hdiutil create -volname Sapphire -srcfolder Sapphire.app -ov -format UDZO build/sapphire.dmg
 
-      - name: Upload DMG
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: build/sapphire.dmg
-          asset_name: sapphire.dmg
-          tag: ${{ github.ref }}
+#      - name: Upload DMG
+#        uses: svenstaro/upload-release-action@v2
+#        with:
+#          repo_token: ${{ secrets.GITHUB_TOKEN }}
+#          file: build/sapphire.dmg
+#          asset_name: sapphire.dmg
+#          tag: ${{ github.ref }}
 
       - name: Upload ZIP
         uses: svenstaro/upload-release-action@v2
