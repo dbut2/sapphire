@@ -4,8 +4,8 @@ go 1.25.0
 
 require (
 	fyne.io/fyne/v2 v2.7.3
-	github.com/dbut2/dialog v0.0.0-20230808141921-73cae36015ab
 	github.com/spf13/cobra v1.10.2
+	github.com/sqweek/dialog v0.0.0-20260123140253-64c163d53aac
 )
 
 require (

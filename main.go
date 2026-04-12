@@ -11,8 +11,8 @@ import (
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/driver/desktop"
-	"github.com/dbut2/dialog"
 	"github.com/spf13/cobra"
+	"github.com/sqweek/dialog"
 
 	"dbut.dev/sapphire/gba"
 )
