@@ -26,6 +26,50 @@ func (d *DMAController) LatchAddresses(ch int) {
 	d.internalDst[ch] = ReadIORegister(d.Memory, DADs[ch])
 }
 
+func (d *DMAController) transferSoundFIFO(dest uint32) {
+	if d.transferring {
+		return
+	}
+	d.transferring = true
+	defer func() { d.transferring = false }()
+
+	CNT_Hs := [4]IORegister[uint16]{DMA0CNT_H, DMA1CNT_H, DMA2CNT_H, DMA3CNT_H}
+	DADs := [4]IORegister[uint32]{DMA0DAD, DMA1DAD, DMA2DAD, DMA3DAD}
+
+	for _, i := range [2]int{1, 2} {
+		cnth := ReadIORegister(d.Memory, CNT_Hs[i])
+		enabled := ReadBits(cnth, 15, 1)
+		cntTiming := ReadBits(cnth, 12, 2)
+		if enabled != 1 || cntTiming != DMASpecial {
+			continue
+		}
+		dad := ReadIORegister(d.Memory, DADs[i])
+		if dad != dest {
+			continue
+		}
+
+		irq := ReadBits(cnth, 14, 1)
+		srcCnt := ReadBits(cnth, 7, 2)
+
+		src := d.internalSrc[i]
+		for j := 0; j < 4; j++ {
+			d.Memory.Set32(dest, d.Memory.Read32(src, false, false), false, false)
+			switch srcCnt {
+			case 0b00:
+				src += 4
+			case 0b01:
+				src -= 4
+			}
+		}
+		d.internalSrc[i] = src
+
+		if irq == 1 {
+			ifReg := ReadIORegister(d.Memory, IF)
+			SetIORegister(d.Memory, IF, ifReg|uint16(1<<(8+i)))
+		}
+	}
+}
+
 func (d *DMAController) transfer(timing uint16) {
 	if d.transferring {
 		return

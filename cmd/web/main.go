@@ -71,6 +71,8 @@ func main() {
 		ctx.Call("putImageData", imageData, 0, 0)
 	})
 
+	setupAudio(e)
+
 	var pressed uint16
 
 	keydownHandler := js.FuncOf(func(this js.Value, args []js.Value) interface{} {

@@ -8,6 +8,7 @@ type Motherboard struct {
 	Timer  *Timer
 	Flash  *Flash
 	GPIO   *GPIO
+	APU    *APU
 }
 
 func NewMotherboard(gamepak []byte) *Motherboard {
@@ -21,6 +22,7 @@ func NewMotherboard(gamepak []byte) *Motherboard {
 	m.Flash = NewFlash(m, gamepak)
 	m.GPIO = NewGPIO()
 	m.GPIO.RTC = NewRTC(m)
+	m.APU = NewAPU(m)
 
 	m.Memory.SetMemoryBlock(BIOS, bios[:])
 	m.Memory.SetMemoryBlock(GPRom1, gamepak)

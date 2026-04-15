@@ -180,6 +180,56 @@ func (m *Memory) setTimerL(address uint32, value uint16, forceAddr bool) bool {
 	}
 }
 
+func (m *Memory) checkSoundWrite(address uint32, value uint32, size uint32) bool {
+	if m.APU == nil {
+		return false
+	}
+	if address >= 0x040000A0 && address < 0x040000A8 {
+		m.APU.OnFIFOWrite(address, value, size)
+		return true
+	}
+	return false
+}
+
+func (m *Memory) afterSoundWrite(address uint32, size uint32) {
+	if m.APU == nil || address < 0x04000060 || address > 0x04000088 {
+		return
+	}
+	m.dispatchSound(address &^ 1)
+	if size == 4 {
+		m.dispatchSound((address &^ 1) + 2)
+	}
+}
+
+func (m *Memory) dispatchSound(aligned uint32) {
+	offset := aligned & 0x3FF
+	v16 := uint16(m.ioBlock[offset]) | uint16(m.ioBlock[offset+1])<<8
+	switch aligned {
+	case uint32(SOUND1CNT_L):
+		m.APU.OnSOUND1CNT_L(v16)
+	case uint32(SOUND1CNT_H):
+		m.APU.OnSOUND1CNT_H(v16)
+	case uint32(SOUND1CNT_X):
+		m.APU.OnSOUND1CNT_X(v16)
+	case uint32(SOUND2CNT_L):
+		m.APU.OnSOUND2CNT_L(v16)
+	case uint32(SOUND2CNT_H):
+		m.APU.OnSOUND2CNT_H(v16)
+	case uint32(SOUND3CNT_L):
+		m.APU.OnSOUND3CNT_L(v16)
+	case uint32(SOUND3CNT_H):
+		m.APU.OnSOUND3CNT_H(v16)
+	case uint32(SOUND3CNT_X):
+		m.APU.OnSOUND3CNT_X(v16)
+	case uint32(SOUND4CNT_L):
+		m.APU.OnSOUND4CNT_L(v16)
+	case uint32(SOUND4CNT_H):
+		m.APU.OnSOUND4CNT_H(v16)
+	case uint32(SOUNDCNT_H):
+		m.APU.OnSOUNDCNT_H(v16)
+	}
+}
+
 func (m *Memory) checkTimerH(address uint32, value uint16) {
 	switch address {
 	case uint32(TM0CNT_H), uint32(TM1CNT_H), uint32(TM2CNT_H), uint32(TM3CNT_H):
@@ -247,8 +297,12 @@ func (m *Memory) Set8(address uint32, value uint8, cycle bool, forceAddr bool) {
 		return // 8-bit writes to timer registers are ignored on GBA
 	}
 	m.checkTimerH(address, uint16(value))
+	if m.checkSoundWrite(address, uint32(value), 1) {
+		return
+	}
 	block, offset := m.block(bd, address)
 	block[offset] = value
+	m.afterSoundWrite(address, 1)
 	m.checkAffineRefWrite(address)
 	m.checkDMA(address)
 }
@@ -291,9 +345,13 @@ func (m *Memory) Set16(address uint32, value uint16, cycle bool, forceAddr bool)
 	if !forceAddr && m.checkIFWrite(address, value) {
 		return
 	}
+	if m.checkSoundWrite(address, uint32(value), 2) {
+		return
+	}
 	block, offset := m.block(bd, address)
 	block[offset] = uint8(value)
 	block[offset+1] = uint8(value >> 8)
+	m.afterSoundWrite(address, 2)
 	m.checkAffineRefWrite(address)
 	m.checkDMA(address)
 }
@@ -345,11 +403,15 @@ func (m *Memory) Set32(address uint32, value uint32, cycle bool, forceAddr bool)
 	if !forceAddr && m.checkIFWrite(address, uint16(value)) {
 		return
 	}
+	if m.checkSoundWrite(address, value, 4) {
+		return
+	}
 	block, offset := m.block(bd, address)
 	block[offset] = uint8(value)
 	block[offset+1] = uint8(value >> 8)
 	block[offset+2] = uint8(value >> 16)
 	block[offset+3] = uint8(value >> 24)
+	m.afterSoundWrite(address, 4)
 	m.checkAffineRefWrite(address)
 	m.checkDMA(address)
 }
