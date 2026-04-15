@@ -128,9 +128,10 @@ func (e *Emulator) step() {
 	}
 
 	if e.CPU.halted {
-		e.CPU.cycle(1)
-		e.Timer.Tick(1)
-		e.APU.Tick(1)
+		const batch = 8
+		e.CPU.cycle(batch)
+		e.Timer.Tick(batch)
+		e.APU.Tick(batch)
 		return
 	}
 

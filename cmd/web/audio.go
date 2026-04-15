@@ -14,7 +14,7 @@ class SapphireProcessor extends AudioWorkletProcessor {
   constructor(opts) {
     super();
     this.srcRate = (opts.processorOptions && opts.processorOptions.sampleRate) || 32768;
-    this.cap = 32768;
+    this.cap = 4096;
     this.ring = new Float32Array(this.cap);
     this.head = 0; this.tail = 0; this.size = 0;
     this.readPos = 0; this.curL = 0; this.curR = 0;
@@ -67,7 +67,6 @@ func setupAudio(e *gba.Emulator) {
 	sampleRate := e.APU.SampleRate()
 	var ctx, node js.Value
 	ready := false
-	pending := [][]byte{}
 
 	var jsU8, jsF32 js.Value
 	bytes := make([]byte, 0, 8192)
@@ -98,9 +97,21 @@ func setupAudio(e *gba.Emulator) {
 			}
 			return
 		}
+		defer func() { _ = recover() }()
 		opts := global.Get("Object").New()
 		opts.Set("sampleRate", sampleRate)
-		ctx = AudioCtx.New(opts)
+		func() {
+			defer func() {
+				if recover() != nil {
+					ctx = AudioCtx.New()
+				}
+			}()
+			ctx = AudioCtx.New(opts)
+		}()
+		worklet := ctx.Get("audioWorklet")
+		if worklet.IsUndefined() {
+			return
+		}
 		blobParts := global.Get("Array").New(1)
 		blobParts.SetIndex(0, workletSource)
 		blobOpts := global.Get("Object").New()
@@ -122,50 +133,53 @@ func setupAudio(e *gba.Emulator) {
 			node = global.Get("AudioWorkletNode").New(ctx, "sapphire", nodeOpts)
 			node.Call("connect", ctx.Get("destination"))
 			ready = true
-			for _, p := range pending {
-				bytes = p
-				need := len(p)
-				if jsU8.IsUndefined() || jsU8.Get("length").Int() < need {
-					jsU8 = global.Get("Uint8Array").New(need)
-					jsF32 = global.Get("Float32Array").New(jsU8.Get("buffer"))
-				}
-				js.CopyBytesToJS(jsU8, p)
-				node.Get("port").Call("postMessage", jsF32.Call("subarray", 0, need/4))
-			}
-			pending = nil
 			onReady.Release()
 			return nil
 		})
-		ctx.Get("audioWorklet").Call("addModule", url).Call("then", onReady)
+		worklet.Call("addModule", url).Call("then", onReady)
 	}
 
 	doc := global.Get("document")
+	events := []string{"pointerdown", "touchstart", "click", "keydown"}
 	var gesture js.Func
 	gesture = js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		start()
-		doc.Call("removeEventListener", "pointerdown", gesture)
-		doc.Call("removeEventListener", "keydown", gesture)
+		for _, ev := range events {
+			doc.Call("removeEventListener", ev, gesture)
+		}
 		gesture.Release()
 		return nil
 	})
-	doc.Call("addEventListener", "pointerdown", gesture)
-	doc.Call("addEventListener", "keydown", gesture)
+	for _, ev := range events {
+		doc.Call("addEventListener", ev, gesture)
+	}
+
+	muted := false
+	gain := js.Value{}
+	doc.Call("addEventListener", "keydown", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if len(args) == 0 || args[0].Get("code").String() != "KeyM" {
+			return nil
+		}
+		if !ready {
+			return nil
+		}
+		if gain.IsUndefined() || gain.IsNull() {
+			gain = ctx.Call("createGain")
+			node.Call("disconnect")
+			node.Call("connect", gain)
+			gain.Call("connect", ctx.Get("destination"))
+		}
+		muted = !muted
+		v := float32(1)
+		if muted {
+			v = 0
+		}
+		gain.Get("gain").Call("setValueAtTime", v, ctx.Get("currentTime"))
+		return nil
+	}))
 
 	e.APU.SetOutput(func(samples []int16) {
 		if !ready {
-			n := len(samples)
-			b := make([]byte, n*4)
-			for i, s := range samples {
-				bits := math.Float32bits(float32(s) / 32768)
-				b[i*4+0] = byte(bits)
-				b[i*4+1] = byte(bits >> 8)
-				b[i*4+2] = byte(bits >> 16)
-				b[i*4+3] = byte(bits >> 24)
-			}
-			pending = append(pending, b)
-			if len(pending) > 128 {
-				pending = pending[1:]
-			}
 			return
 		}
 		send(samples)
