@@ -57,6 +57,9 @@ func (t *Timer) tick(idx int, incs [4]uint32, prevOverflowed bool) bool {
 			ifReg := ReadIORegister16(t.Memory, IF)
 			SetIORegister16(t.Memory, IF, ifReg|uint16(1<<(3+idx)))
 		}
+		if t.APU != nil && idx < 2 {
+			t.APU.OnTimerOverflow(idx)
+		}
 		return true
 	}
 

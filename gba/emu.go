@@ -128,7 +128,10 @@ func (e *Emulator) step() {
 	}
 
 	if e.CPU.halted {
-		e.CPU.cycle(1)
+		const batch = 8
+		e.CPU.cycle(batch)
+		e.Timer.Tick(batch)
+		e.APU.Tick(batch)
 		return
 	}
 
@@ -138,4 +141,5 @@ func (e *Emulator) step() {
 
 	elapsed := postCount - preCount
 	e.Timer.Tick(elapsed)
+	e.APU.Tick(elapsed)
 }
