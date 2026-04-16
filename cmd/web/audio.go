@@ -64,6 +64,15 @@ func setupAudio(e *gba.Emulator) {
 		return
 	}
 
+	if nav := global.Get("navigator"); !nav.IsUndefined() {
+		if session := nav.Get("audioSession"); !session.IsUndefined() && !session.IsNull() {
+			func() {
+				defer func() { _ = recover() }()
+				session.Set("type", "playback")
+			}()
+		}
+	}
+
 	sampleRate := e.APU.SampleRate()
 	var ctx, node js.Value
 	ready := false
@@ -90,11 +99,30 @@ func setupAudio(e *gba.Emulator) {
 		node.Get("port").Call("postMessage", jsF32.Call("subarray", 0, n))
 	}
 
+	resumeIfNeeded := func() {
+		if ctx.IsUndefined() {
+			return
+		}
+		if ctx.Get("state").String() != "running" {
+			ctx.Call("resume")
+		}
+	}
+
+	unlock := func() {
+		if ctx.IsUndefined() {
+			return
+		}
+		defer func() { _ = recover() }()
+		buf := ctx.Call("createBuffer", 1, 1, 22050)
+		src := ctx.Call("createBufferSource")
+		src.Set("buffer", buf)
+		src.Call("connect", ctx.Get("destination"))
+		src.Call("start", 0)
+	}
+
 	start := func() {
 		if !ctx.IsUndefined() {
-			if ctx.Get("state").String() == "suspended" {
-				ctx.Call("resume")
-			}
+			resumeIfNeeded()
 			return
 		}
 		defer func() { _ = recover() }()
@@ -108,6 +136,8 @@ func setupAudio(e *gba.Emulator) {
 			}()
 			ctx = AudioCtx.New(opts)
 		}()
+		resumeIfNeeded()
+		unlock()
 		worklet := ctx.Get("audioWorklet")
 		if worklet.IsUndefined() {
 			return
@@ -144,10 +174,12 @@ func setupAudio(e *gba.Emulator) {
 	var gesture js.Func
 	gesture = js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		start()
-		for _, ev := range events {
-			doc.Call("removeEventListener", ev, gesture)
+		if ready && !ctx.IsUndefined() && ctx.Get("state").String() == "running" {
+			for _, ev := range events {
+				doc.Call("removeEventListener", ev, gesture)
+			}
+			gesture.Release()
 		}
-		gesture.Release()
 		return nil
 	})
 	for _, ev := range events {
@@ -156,12 +188,9 @@ func setupAudio(e *gba.Emulator) {
 
 	muted := false
 	gain := js.Value{}
-	doc.Call("addEventListener", "keydown", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) == 0 || args[0].Get("code").String() != "KeyM" {
-			return nil
-		}
+	toggleMute := func() bool {
 		if !ready {
-			return nil
+			return muted
 		}
 		if gain.IsUndefined() || gain.IsNull() {
 			gain = ctx.Call("createGain")
@@ -175,7 +204,17 @@ func setupAudio(e *gba.Emulator) {
 			v = 0
 		}
 		gain.Get("gain").Call("setValueAtTime", v, ctx.Get("currentTime"))
+		return muted
+	}
+	doc.Call("addEventListener", "keydown", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if len(args) == 0 || args[0].Get("code").String() != "KeyM" {
+			return nil
+		}
+		toggleMute()
 		return nil
+	}))
+	global.Set("sapphireToggleMute", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		return toggleMute()
 	}))
 
 	e.APU.SetOutput(func(samples []int16) {
