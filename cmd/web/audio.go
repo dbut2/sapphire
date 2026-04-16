@@ -188,12 +188,9 @@ func setupAudio(e *gba.Emulator) {
 
 	muted := false
 	gain := js.Value{}
-	doc.Call("addEventListener", "keydown", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) == 0 || args[0].Get("code").String() != "KeyM" {
-			return nil
-		}
+	toggleMute := func() bool {
 		if !ready {
-			return nil
+			return muted
 		}
 		if gain.IsUndefined() || gain.IsNull() {
 			gain = ctx.Call("createGain")
@@ -207,7 +204,17 @@ func setupAudio(e *gba.Emulator) {
 			v = 0
 		}
 		gain.Get("gain").Call("setValueAtTime", v, ctx.Get("currentTime"))
+		return muted
+	}
+	doc.Call("addEventListener", "keydown", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if len(args) == 0 || args[0].Get("code").String() != "KeyM" {
+			return nil
+		}
+		toggleMute()
 		return nil
+	}))
+	global.Set("sapphireToggleMute", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		return toggleMute()
 	}))
 
 	e.APU.SetOutput(func(samples []int16) {
