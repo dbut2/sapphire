@@ -106,25 +106,31 @@ func (e *Emulator) scanline(line uint16) {
 }
 
 func (e *Emulator) step() {
-	dispstat := ReadIORegister16(e.Memory, DISPSTAT)
-	HBlank := (1005 - e.CPU.cycles) >> 31 // 0: 0-1005, 1: 1006-1231
-	dispstat = SetBits(dispstat, 1, 1, uint16(HBlank))
-	SetIORegister16(e.Memory, DISPSTAT, dispstat)
-
-	if e.CPU.cpsrIRQDisable() == 0 {
-		ime := ReadIORegister16(e.Memory, IME)
-		ie := ReadIORegister16(e.Memory, IE)
-		ifReg := ReadIORegister16(e.Memory, IF)
-		if ime > 0 && ie&ifReg > 0 {
-			e.CPU.halted = false
-			e.CPU.exception(0x18)
+	hblank := e.CPU.cycles > 1005
+	if hblank != e.hblank {
+		e.hblank = hblank
+		dispstat := ReadIORegister16(e.Memory, DISPSTAT)
+		var bit uint16
+		if hblank {
+			bit = 1
 		}
-	} else if e.CPU.halted {
-		ime := ReadIORegister16(e.Memory, IME)
-		ie := ReadIORegister16(e.Memory, IE)
-		ifReg := ReadIORegister16(e.Memory, IF)
-		if ime > 0 && ie&ifReg > 0 {
-			e.CPU.halted = false
+		SetIORegister16(e.Memory, DISPSTAT, SetBits(dispstat, 1, 1, bit))
+	}
+
+	if ifReg := ReadIORegister16(e.Memory, IF); ifReg != 0 {
+		if e.CPU.cpsrIRQDisable() == 0 {
+			ime := ReadIORegister16(e.Memory, IME)
+			ie := ReadIORegister16(e.Memory, IE)
+			if ime > 0 && ie&ifReg > 0 {
+				e.CPU.halted = false
+				e.CPU.exception(0x18)
+			}
+		} else if e.CPU.halted {
+			ime := ReadIORegister16(e.Memory, IME)
+			ie := ReadIORegister16(e.Memory, IE)
+			if ime > 0 && ie&ifReg > 0 {
+				e.CPU.halted = false
+			}
 		}
 	}
 

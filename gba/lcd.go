@@ -468,9 +468,24 @@ func (l *LCD) compositeLine(line uint16) {
 			}
 		}
 
-		l.setPixelFromColor(x, uint32(line), finalColor)
+		lut := rgbaLUT[finalColor&0x7FFF]
+		idx := (uint32(line)*240 + x) * 4
+		l.img.Pix[idx+0] = lut[0]
+		l.img.Pix[idx+1] = lut[1]
+		l.img.Pix[idx+2] = lut[2]
+		l.img.Pix[idx+3] = lut[3]
 	}
 }
+
+var rgbaLUT = func() (lut [32768][4]uint8) {
+	for c := uint32(0); c < 32768; c++ {
+		r := c & 31
+		g := (c >> 5) & 31
+		b := (c >> 10) & 31
+		lut[c] = [4]uint8{uint8(r<<3 | r>>2), uint8(g<<3 | g>>2), uint8(b<<3 | b>>2), 255}
+	}
+	return
+}()
 
 func blendAlpha(above, below uint16, eva, evb uint32) uint16 {
 	ar := uint32(above) & 0x1F
@@ -516,103 +531,110 @@ func (l *LCD) drawTextBGLine(line uint16, bgcnt IORegister[uint16], hofs IORegis
 	scrollX := uint32(ReadIORegister(l.Memory, hofs)) & 0x1FF
 	scrollY := uint32(ReadIORegister(l.Memory, vofs)) & 0x1FF
 
-	var bgWidthTiles, bgHeightTiles uint32
-	switch screenSize {
-	case 0:
-		bgWidthTiles, bgHeightTiles = 32, 32
-	case 1:
-		bgWidthTiles, bgHeightTiles = 64, 32
-	case 2:
-		bgWidthTiles, bgHeightTiles = 32, 64
-	case 3:
-		bgWidthTiles, bgHeightTiles = 64, 64
-	}
+	bgWidthTiles := uint32(32) << (screenSize & 1)
+	bgHeightTiles := uint32(32) << (screenSize >> 1)
 
-	bgWidthPx := bgWidthTiles * 8
-	bgHeightPx := bgHeightTiles * 8
-
-	y := (uint32(line) + scrollY) % bgHeightPx
+	y := (uint32(line) + scrollY) % (bgHeightTiles * 8)
 	tileY := y / 8
 	fineY := y % 8
 
 	vram := l.Memory.ReadMemoryBlock(VRAM)
 	palette := l.Memory.ReadMemoryBlock(Palette)
 
-	for screenX := uint32(0); screenX < 240; screenX++ {
+	rowBlockOffset := uint32(0)
+	localTileY := tileY
+	if tileY >= 32 {
+		if bgWidthTiles == 64 {
+			rowBlockOffset = 0x1000
+		} else {
+			rowBlockOffset = 0x0800
+		}
+		localTileY -= 32
+	}
+
+	bgWidthPx := bgWidthTiles * 8
+	for screenX := uint32(0); screenX < 240; {
 		x := (screenX + scrollX) % bgWidthPx
 		tileX := x / 8
 		fineX := x % 8
+		n := 8 - fineX
+		if screenX+n > 240 {
+			n = 240 - screenX
+		}
 
-		screenBlockOffset := uint32(0)
+		screenBlockOffset := rowBlockOffset
 		localTileX := tileX
-		localTileY := tileY
-
-		if bgWidthTiles == 64 && tileX >= 32 {
+		if tileX >= 32 {
 			screenBlockOffset += 0x0800
 			localTileX -= 32
-		}
-		if bgHeightTiles == 64 && tileY >= 32 {
-			if bgWidthTiles == 64 {
-				screenBlockOffset += 0x1000
-			} else {
-				screenBlockOffset += 0x0800
-			}
-			localTileY -= 32
 		}
 
 		mapOffset := screenBase + screenBlockOffset + (localTileY*32+localTileX)*2
 		if mapOffset+1 >= uint32(len(vram)) {
+			screenX += n
 			continue
 		}
 		tileEntry := uint16(vram[mapOffset]) | uint16(vram[mapOffset+1])<<8
 
 		tileNum := uint32(tileEntry & 0x3FF)
-		hFlip := (tileEntry >> 10) & 1
-		vFlip := (tileEntry >> 11) & 1
+		hFlip := (tileEntry>>10)&1 == 1
+		vFlip := (tileEntry>>11)&1 == 1
 		palNum := uint32((tileEntry >> 12) & 0xF)
 
 		pixelY := fineY
-		pixelX := fineX
-
-		if hFlip == 1 {
-			pixelX = 7 - pixelX
-		}
-		if vFlip == 1 {
+		if vFlip {
 			pixelY = 7 - pixelY
 		}
 
-		var colorIdx uint32
 		if colorMode == 0 {
-
-			tileAddr := charBase + tileNum*32 + pixelY*4 + pixelX/2
-			if tileAddr >= uint32(len(vram)) {
+			rowAddr := charBase + tileNum*32 + pixelY*4
+			if rowAddr+4 > uint32(len(vram)) {
+				screenX += n
 				continue
 			}
-			b := uint32(vram[tileAddr])
-			if pixelX%2 == 0 {
-				colorIdx = b & 0xF
-			} else {
-				colorIdx = (b >> 4) & 0xF
+			row := vram[rowAddr : rowAddr+4]
+			palBase := palNum * 16
+			for i := uint32(0); i < n; i++ {
+				px := fineX + i
+				if hFlip {
+					px = 7 - px
+				}
+				b := uint32(row[px/2])
+				var colorIdx uint32
+				if px&1 == 0 {
+					colorIdx = b & 0xF
+				} else {
+					colorIdx = b >> 4
+				}
+				if colorIdx == 0 {
+					continue
+				}
+				palAddr := (palBase + colorIdx) * 2
+				color := uint16(palette[palAddr]) | uint16(palette[palAddr+1])<<8
+				l.drawBufPixel(screenX+i, color, layer)
 			}
-			if colorIdx == 0 {
-				continue
-			}
-			colorIdx = palNum*16 + colorIdx
 		} else {
-
-			tileAddr := charBase + tileNum*64 + pixelY*8 + pixelX
-			if tileAddr >= uint32(len(vram)) {
+			rowAddr := charBase + tileNum*64 + pixelY*8
+			if rowAddr+8 > uint32(len(vram)) {
+				screenX += n
 				continue
 			}
-			colorIdx = uint32(vram[tileAddr])
-			if colorIdx == 0 {
-				continue
+			row := vram[rowAddr : rowAddr+8]
+			for i := uint32(0); i < n; i++ {
+				px := fineX + i
+				if hFlip {
+					px = 7 - px
+				}
+				colorIdx := uint32(row[px])
+				if colorIdx == 0 {
+					continue
+				}
+				palAddr := colorIdx * 2
+				color := uint16(palette[palAddr]) | uint16(palette[palAddr+1])<<8
+				l.drawBufPixel(screenX+i, color, layer)
 			}
 		}
-
-		palAddr := colorIdx * 2
-		color := uint16(palette[palAddr]) | uint16(palette[palAddr+1])<<8
-		l.drawBufPixel(screenX, color, layer)
+		screenX += n
 	}
 }
 
@@ -625,17 +647,12 @@ func (l *LCD) BGMode0Write(line uint16) {
 	bgVofs := [4]IORegister[uint16]{BG0VOFS, BG1VOFS, BG2VOFS, BG3VOFS}
 	bgLayers := [4]uint8{layerBG0, layerBG1, layerBG2, layerBG3}
 
-	type bgInfo struct {
-		bgNum    int
-		priority uint16
-	}
-
-	var bgs []bgInfo
+	var bgEnabled [4]bool
+	var bgPri [4]uint16
 	for i := 0; i < 4; i++ {
 		if ReadBits(dispcnt, uint8(8+i), 1) == 1 {
-			cnt := ReadIORegister(l.Memory, bgCnts[i])
-			pri := ReadBits(cnt, 0, 2)
-			bgs = append(bgs, bgInfo{i, pri})
+			bgEnabled[i] = true
+			bgPri[i] = ReadBits(ReadIORegister(l.Memory, bgCnts[i]), 0, 2)
 		}
 	}
 
@@ -643,10 +660,8 @@ func (l *LCD) BGMode0Write(line uint16) {
 
 	for pri := uint16(3); pri <= 3; pri-- {
 		for bgIdx := 3; bgIdx >= 0; bgIdx-- {
-			for _, bg := range bgs {
-				if bg.bgNum == bgIdx && bg.priority == pri {
-					l.drawTextBGLine(line, bgCnts[bg.bgNum], bgHofs[bg.bgNum], bgVofs[bg.bgNum], bgLayers[bg.bgNum])
-				}
+			if bgEnabled[bgIdx] && bgPri[bgIdx] == pri {
+				l.drawTextBGLine(line, bgCnts[bgIdx], bgHofs[bgIdx], bgVofs[bgIdx], bgLayers[bgIdx])
 			}
 		}
 		if objEnabled {
@@ -666,16 +681,12 @@ func (l *LCD) BGMode1Write(line uint16) {
 	bgVofs := [2]IORegister[uint16]{BG0VOFS, BG1VOFS}
 	bgLayers := [2]uint8{layerBG0, layerBG1}
 
-	type bgInfo struct {
-		idx      int
-		priority uint16
-	}
-	var textBGs []bgInfo
+	var bgEnabled [2]bool
+	var bgPri [2]uint16
 	for i := 0; i < 2; i++ {
 		if ReadBits(dispcnt, uint8(8+i), 1) == 1 {
-			cnt := ReadIORegister(l.Memory, bgCnts[i])
-			pri := ReadBits(cnt, 0, 2)
-			textBGs = append(textBGs, bgInfo{i, pri})
+			bgEnabled[i] = true
+			bgPri[i] = ReadBits(ReadIORegister(l.Memory, bgCnts[i]), 0, 2)
 		}
 	}
 
@@ -691,10 +702,8 @@ func (l *LCD) BGMode1Write(line uint16) {
 			l.drawAffineBGLine(line, BG2CNT, BG2PA, BG2PB, BG2PC, BG2PD, BG2X, BG2Y, layerBG2)
 		}
 		for bgIdx := 1; bgIdx >= 0; bgIdx-- {
-			for _, bg := range textBGs {
-				if bg.idx == bgIdx && bg.priority == pri {
-					l.drawTextBGLine(line, bgCnts[bg.idx], bgHofs[bg.idx], bgVofs[bg.idx], bgLayers[bg.idx])
-				}
+			if bgEnabled[bgIdx] && bgPri[bgIdx] == pri {
+				l.drawTextBGLine(line, bgCnts[bgIdx], bgHofs[bgIdx], bgVofs[bgIdx], bgLayers[bgIdx])
 			}
 		}
 		if objEnabled {
@@ -942,19 +951,19 @@ func (l *LCD) drawOBJLine(line uint16, targetPri uint16) {
 
 	for i := 127; i >= 0; i-- {
 		base := i * 8
+		attr2 := uint16(oam[base+4]) | uint16(oam[base+5])<<8
+		pri := ReadBits(attr2, 10, 2)
+		if pri != targetPri {
+			continue
+		}
+
 		attr0 := uint16(oam[base]) | uint16(oam[base+1])<<8
 		attr1 := uint16(oam[base+2]) | uint16(oam[base+3])<<8
-		attr2 := uint16(oam[base+4]) | uint16(oam[base+5])<<8
 
 		scalerot := ReadBits(attr0, 8, 1) == 1
 		doubleSize := ReadBits(attr0, 9, 1) == 1
 
 		if !scalerot && doubleSize {
-			continue
-		}
-
-		pri := ReadBits(attr2, 10, 2)
-		if pri != targetPri {
 			continue
 		}
 

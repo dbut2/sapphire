@@ -268,6 +268,14 @@ func (m *Memory) Set8(address uint32, value uint8, cycle bool, forceAddr bool) {
 	if cycle {
 		m.cycle(bd, 0)
 	}
+	if address>>24 <= 0x03 {
+		if !bd.MemoryBlock.Writes[0] {
+			return
+		}
+		block, offset := m.block(bd, address)
+		block[offset] = value
+		return
+	}
 	if address >= 0x0E000000 && address < 0x10000000 {
 		m.Flash.Write(address, value)
 		return
@@ -337,6 +345,19 @@ func (m *Memory) Read16(address uint32, cycle bool, forceAddr bool) (value uint1
 
 func (m *Memory) Set16(address uint32, value uint16, cycle bool, forceAddr bool) {
 	bd := m.addrBlockData(address)
+	if top := address >> 24; top != 0x04 && top != 0x08 {
+		if !bd.MemoryBlock.Writes[1] {
+			return
+		}
+		address &= ^uint32(1)
+		if cycle {
+			m.cycle(bd, 1)
+		}
+		block, offset := m.block(bd, address)
+		block[offset] = uint8(value)
+		block[offset+1] = uint8(value >> 8)
+		return
+	}
 	if address >= 0x080000C4 && address < 0x080000CA {
 		m.GPIO.Write(address&^1, uint8(value))
 		return
@@ -387,6 +408,21 @@ func (m *Memory) Read32(address uint32, cycle bool, forceAddr bool) (value uint3
 
 func (m *Memory) Set32(address uint32, value uint32, cycle bool, forceAddr bool) {
 	bd := m.addrBlockData(address)
+	if top := address >> 24; top != 0x04 && top != 0x08 {
+		if !bd.MemoryBlock.Writes[2] {
+			return
+		}
+		address &= ^uint32(3)
+		if cycle {
+			m.cycle(bd, 2)
+		}
+		block, offset := m.block(bd, address)
+		block[offset] = uint8(value)
+		block[offset+1] = uint8(value >> 8)
+		block[offset+2] = uint8(value >> 16)
+		block[offset+3] = uint8(value >> 24)
+		return
+	}
 	if address >= 0x080000C4 && address < 0x080000CA {
 		m.GPIO.Write(address&^3, uint8(value))
 		m.GPIO.Write((address&^3)+2, uint8(value>>16))
