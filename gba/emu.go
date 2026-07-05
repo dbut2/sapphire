@@ -34,18 +34,23 @@ func (e *Emulator) Boot() {
 	e.Run()
 }
 
-const fastForwardSpeed = 10
-
 func (e *Emulator) Run() {
-	ticker := time.NewTicker(16739000 * time.Nanosecond)
+	const frameDur = 16739 * time.Microsecond
+	ticker := time.NewTicker(frameDur)
+	lastDraw := time.Now()
 	for {
-		<-ticker.C
 		if e.FastForward {
-			for i := 0; i < fastForwardSpeed-1; i++ {
+			if time.Since(lastDraw) >= frameDur {
+				lastDraw = time.Now()
+				e.runFrame(false)
+			} else {
 				e.runFrame(true)
 			}
+			continue
 		}
+		<-ticker.C
 		e.runFrame(false)
+		lastDraw = time.Now()
 	}
 }
 
