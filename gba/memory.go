@@ -1,5 +1,7 @@
 package gba
 
+import "encoding/binary"
+
 type Memory struct {
 	*Motherboard
 
@@ -339,7 +341,7 @@ func (m *Memory) Read16(address uint32, cycle bool, forceAddr bool) (value uint1
 		m.Timer.SyncToMemory()
 	}
 	block, offset := m.block(bd, address)
-	value = uint16(block[offset]) | uint16(block[offset+1])<<8
+	value = binary.LittleEndian.Uint16(block[offset:])
 	return
 }
 
@@ -354,8 +356,7 @@ func (m *Memory) Set16(address uint32, value uint16, cycle bool, forceAddr bool)
 			m.cycle(bd, 1)
 		}
 		block, offset := m.block(bd, address)
-		block[offset] = uint8(value)
-		block[offset+1] = uint8(value >> 8)
+		binary.LittleEndian.PutUint16(block[offset:], value)
 		return
 	}
 	if address >= 0x080000C4 && address < 0x080000CA {
@@ -396,10 +397,7 @@ func (m *Memory) Read32(address uint32, cycle bool, forceAddr bool) (value uint3
 		m.cycle(bd, 2)
 	}
 	block, offset := m.block(bd, address)
-	value = uint32(block[offset])
-	value |= uint32(block[offset+1]) << 8
-	value |= uint32(block[offset+2]) << 16
-	value |= uint32(block[offset+3]) << 24
+	value = binary.LittleEndian.Uint32(block[offset:])
 	if rotate > 0 {
 		value = (value >> rotate) | (value << (32 - rotate))
 	}
@@ -417,10 +415,7 @@ func (m *Memory) Set32(address uint32, value uint32, cycle bool, forceAddr bool)
 			m.cycle(bd, 2)
 		}
 		block, offset := m.block(bd, address)
-		block[offset] = uint8(value)
-		block[offset+1] = uint8(value >> 8)
-		block[offset+2] = uint8(value >> 16)
-		block[offset+3] = uint8(value >> 24)
+		binary.LittleEndian.PutUint32(block[offset:], value)
 		return
 	}
 	if address >= 0x080000C4 && address < 0x080000CA {
@@ -469,13 +464,12 @@ func (m *Memory) ClearBlock(mb MemoryBlock) {
 
 func ReadIORegister16(m *Memory, r IORegister[uint16]) uint16 {
 	offset := uint32(r) & 0x3FF
-	return uint16(m.ioBlock[offset]) | uint16(m.ioBlock[offset+1])<<8
+	return binary.LittleEndian.Uint16(m.ioBlock[offset:])
 }
 
 func SetIORegister16(m *Memory, r IORegister[uint16], value uint16) {
 	offset := uint32(r) & 0x3FF
-	m.ioBlock[offset] = uint8(value)
-	m.ioBlock[offset+1] = uint8(value >> 8)
+	binary.LittleEndian.PutUint16(m.ioBlock[offset:], value)
 }
 
 func ReadIORegister[S Size](m *Memory, r IORegister[S]) S {

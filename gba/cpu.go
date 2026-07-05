@@ -1,6 +1,7 @@
 package gba
 
 import (
+	"encoding/binary"
 	"fmt"
 	"math"
 )
@@ -69,8 +70,7 @@ func (c *CPU) fetch32(addr uint32) uint32 {
 	}
 	c.cycles += c.fetchCyc32
 	off := (addr - c.fetchStart) & c.fetchMask
-	d := c.fetchData[off : off+4 : off+4]
-	return uint32(d[0]) | uint32(d[1])<<8 | uint32(d[2])<<16 | uint32(d[3])<<24
+	return binary.LittleEndian.Uint32(c.fetchData[off:])
 }
 
 func (c *CPU) fetch16(addr uint32) uint16 {
@@ -81,7 +81,7 @@ func (c *CPU) fetch16(addr uint32) uint16 {
 	}
 	c.cycles += c.fetchCyc16
 	off := (addr - c.fetchStart) & c.fetchMask
-	return uint16(c.fetchData[off]) | uint16(c.fetchData[off+1])<<8
+	return binary.LittleEndian.Uint16(c.fetchData[off:])
 }
 
 func (c *CPU) cacheFetchBlock(addr uint32) bool {
@@ -406,11 +406,19 @@ func (c *CPU) exception(vector uint32) {
 }
 
 func (c *CPU) cond(cond uint32) bool {
-	N := c.cpsrN()
-	Z := c.cpsrZ()
-	C := c.cpsrC()
-	V := c.cpsrV()
+	return condTable[cond<<4|c.CPSR>>28]
+}
 
+var condTable = func() (t [256]bool) {
+	for cond := uint32(0); cond < 16; cond++ {
+		for flags := uint32(0); flags < 16; flags++ {
+			t[cond<<4|flags] = evalCond(cond, flags>>3&1, flags>>2&1, flags>>1&1, flags&1)
+		}
+	}
+	return
+}()
+
+func evalCond(cond, N, Z, C, V uint32) bool {
 	switch cond {
 	case 0b0000: // EQ Z=1 equal (zero) (same)
 		return Z == 1

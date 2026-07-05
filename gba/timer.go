@@ -19,6 +19,13 @@ func NewTimer(m *Motherboard) *Timer {
 
 const idleDeadline = 1 << 30
 
+func (t *Timer) untilDeadline() uint32 {
+	if t.acc >= t.deadline {
+		return 1
+	}
+	return t.deadline - t.acc
+}
+
 func (t *Timer) Tick(cycles uint32) {
 	t.acc += cycles
 	if t.acc >= t.deadline {

@@ -135,10 +135,19 @@ func (e *Emulator) step() {
 	}
 
 	if e.CPU.halted {
-		const batch = 8
-		e.CPU.cycle(batch)
-		e.Timer.Tick(batch)
-		e.APU.Tick(batch)
+		jump := uint32(8)
+		if e.CPU.cycles < 1232 {
+			jump = 1232 - e.CPU.cycles
+		}
+		if until := e.Timer.untilDeadline(); until < jump {
+			jump = until
+		}
+		if jump == 0 {
+			jump = 1
+		}
+		e.CPU.cycle(jump)
+		e.Timer.Tick(jump)
+		e.APU.Tick(jump)
 		return
 	}
 

@@ -90,85 +90,62 @@ func buildArmTable() (table [4096]func(*CPU, uint32)) {
 
 func (c *CPU) ArmALU(instruction uint32) {
 	Opcode := ReadBits(instruction, 21, 4)
+	Rd := ReadBits(instruction, 12, 4)
+	Cy := ReadBits(c.CPSR, 29, 1)
+	Rn := c.Arm_Rn(instruction)
+	Op2 := c.Arm_Op2(instruction)
+	S := ReadBits(instruction, 20, 1)
 
-	var doOp func(Rn, Op2, Cy uint32) (value uint64)
-	var flagger func(left, right uint32, value uint64) (N, Z, C, V bool)
+	var value uint64
 	logic := false
 	void := false
 
 	switch Opcode {
 	case 0b0000:
-		doOp = AND
-		flagger = FlagLogic
+		value = uint64(Rn & Op2)
 		logic = true
 	case 0b0001:
-		doOp = EOR
-		flagger = FlagLogic
+		value = uint64(Rn ^ Op2)
 		logic = true
 	case 0b0010:
-		doOp = SUB
-		flagger = FlagArithSub
+		value = uint64(Rn) - uint64(Op2)
 	case 0b0011:
-		doOp = RSB
-		flagger = FlagArithReSub
+		value = uint64(Op2) - uint64(Rn)
 	case 0b0100:
-		doOp = ADD
-		flagger = FlagArithAdd
+		value = uint64(Rn) + uint64(Op2)
 	case 0b0101:
-		doOp = ADC
-		flagger = FlagArithAdd
+		value = uint64(Rn) + uint64(Op2) + uint64(Cy)
 	case 0b0110:
-		doOp = SBCArm
-		flagger = FlagArithSub
+		value = uint64(Rn) - uint64(Op2) + uint64(Cy) - 1
 	case 0b0111:
-		doOp = RSC
-		flagger = FlagArithReSub
+		value = uint64(Op2) - uint64(Rn) + uint64(Cy) - 1
 	case 0b1000:
-		doOp = TST
-		flagger = FlagLogic
+		value = uint64(Rn & Op2)
 		logic = true
 		void = true
 	case 0b1001:
-		doOp = TEQ
-		flagger = FlagLogic
+		value = uint64(Rn ^ Op2)
 		logic = true
 		void = true
 	case 0b1010:
-		doOp = CMP
-		flagger = FlagArithSub
+		value = uint64(Rn) - uint64(Op2)
 		void = true
 	case 0b1011:
-		doOp = CMN
-		flagger = FlagArithAdd
+		value = uint64(Rn) + uint64(Op2)
 		void = true
 	case 0b1100:
-		doOp = ORR
-		flagger = FlagLogic
+		value = uint64(Rn | Op2)
 		logic = true
 	case 0b1101:
-		doOp = MOV
-		flagger = FlagLogic
+		value = uint64(Op2)
 		logic = true
 	case 0b1110:
-		doOp = BIC
-		flagger = FlagLogic
+		value = uint64(Rn &^ Op2)
 		logic = true
 	case 0b1111:
-		doOp = MVN
-		flagger = FlagLogic
+		value = uint64(^Op2)
 		logic = true
-	default:
-		c.noins(instruction)
 	}
-
-	Rd := ReadBits(instruction, 12, 4)
-	Cy := ReadBits(c.CPSR, 29, 1)
-	Rn := c.Arm_Rn(instruction)
-	Op2 := c.Arm_Op2(instruction)
-
-	S := ReadBits(instruction, 20, 1)
-
-	value := doOp(Rn, Op2, Cy)
 
 	if !void {
 		c.R[Rd] = uint32(value)
@@ -178,23 +155,37 @@ func (c *CPU) ArmALU(instruction uint32) {
 		}
 	}
 
-	N, Z, C, V := flagger(Rn, Op2, value)
-
-	switch {
-	case S == 1 && Rd != 15 && logic:
-		c.cpsrSetZ(Z)
-		c.cpsrSetN(N)
-	case S == 1 && Rd != 15 && !logic:
-		c.cpsrSetV(V)
-		c.cpsrSetC(C)
-		c.cpsrSetZ(Z)
-		c.cpsrSetN(N)
-	case S == 1 && Rd == 15 && !void:
-		c.restoreCpsr()
-		c.prefetchFlush()
-	case S == 1 && Rd == 15 && void:
-		c.restoreCpsr()
+	if S == 0 {
+		return
 	}
+
+	if Rd == 15 {
+		c.restoreCpsr()
+		if !void {
+			c.prefetchFlush()
+		}
+		return
+	}
+
+	if logic {
+		c.cpsrSetZ(uint32(value) == 0)
+		c.cpsrSetN(uint32(value)>>31 == 1)
+		return
+	}
+
+	var N, Z, C, V bool
+	switch Opcode {
+	case 0b0010, 0b0110, 0b1010:
+		N, Z, C, V = FlagArithSub(Rn, Op2, value)
+	case 0b0011, 0b0111:
+		N, Z, C, V = FlagArithReSub(Rn, Op2, value)
+	default:
+		N, Z, C, V = FlagArithAdd(Rn, Op2, value)
+	}
+	c.cpsrSetV(V)
+	c.cpsrSetC(C)
+	c.cpsrSetZ(Z)
+	c.cpsrSetN(N)
 }
 
 func (c *CPU) Arm_Rn(instruction uint32) uint32 {

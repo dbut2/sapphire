@@ -1,6 +1,7 @@
 package gba
 
 import (
+	"encoding/binary"
 	"image"
 	"strconv"
 	"time"
@@ -38,6 +39,7 @@ type LCD struct {
 	objList  [4][128]uint8
 	objCount [4]uint8
 	anySemi  bool
+	simple   bool
 
 	bg2Xi, bg2Yi int32
 	bg3Xi, bg3Yi int32
@@ -212,8 +214,20 @@ func (l *LCD) setPixelFromColor(x, y uint32, color uint16) {
 }
 
 func (l *LCD) initLine(line uint16) {
+	l.computeWindowMask(line)
+	l.prescanOBJ(line)
+
+	bldcnt := ReadIORegister(l.Memory, BLDCNT)
+	l.simple = (bldcnt>>6)&3 == 0 && !l.anySemi
+
 	palette := l.Memory.ReadMemoryBlock(Palette)
 	backdrop := uint16(palette[0]) | uint16(palette[1])<<8
+	if l.simple {
+		for x := 0; x < 240; x++ {
+			l.topColor[x] = backdrop
+		}
+		return
+	}
 	for x := 0; x < 240; x++ {
 		l.topColor[x] = backdrop
 		l.topLayer[x] = layerBackdrop
@@ -221,8 +235,6 @@ func (l *LCD) initLine(line uint16) {
 		l.botLayer[x] = layerBackdrop
 		l.objSemi[x] = false
 	}
-	l.computeWindowMask(line)
-	l.prescanOBJ(line)
 }
 
 func (l *LCD) prescanOBJ(line uint16) {
@@ -480,6 +492,10 @@ func (l *LCD) drawBufPixel(x uint32, color uint16, layer uint8) {
 	if l.useWindow && l.winMask[x]&(1<<layer) == 0 {
 		return
 	}
+	if l.simple {
+		l.topColor[x] = color
+		return
+	}
 	l.botColor[x] = l.topColor[x]
 	l.botLayer[x] = l.topLayer[x]
 	l.topColor[x] = color
@@ -492,14 +508,10 @@ func (l *LCD) compositeLine(line uint16) {
 	above := bldcnt & 0x3F
 	below := (bldcnt >> 8) & 0x3F
 
-	if mode == 0 && !l.anySemi {
+	if l.simple {
 		pix := l.img.Pix[uint32(line)*240*4:]
 		for x := 0; x < 240; x++ {
-			lut := rgbaLUT[l.topColor[x]&0x7FFF]
-			pix[x*4+0] = lut[0]
-			pix[x*4+1] = lut[1]
-			pix[x*4+2] = lut[2]
-			pix[x*4+3] = lut[3]
+			binary.LittleEndian.PutUint32(pix[x*4:], rgbaLUT[l.topColor[x]&0x7FFF])
 		}
 		return
 	}
@@ -550,21 +562,17 @@ func (l *LCD) compositeLine(line uint16) {
 			}
 		}
 
-		lut := rgbaLUT[finalColor&0x7FFF]
 		idx := (uint32(line)*240 + x) * 4
-		l.img.Pix[idx+0] = lut[0]
-		l.img.Pix[idx+1] = lut[1]
-		l.img.Pix[idx+2] = lut[2]
-		l.img.Pix[idx+3] = lut[3]
+		binary.LittleEndian.PutUint32(l.img.Pix[idx:], rgbaLUT[finalColor&0x7FFF])
 	}
 }
 
-var rgbaLUT = func() (lut [32768][4]uint8) {
+var rgbaLUT = func() (lut [32768]uint32) {
 	for c := uint32(0); c < 32768; c++ {
 		r := c & 31
 		g := (c >> 5) & 31
 		b := (c >> 10) & 31
-		lut[c] = [4]uint8{uint8(r<<3 | r>>2), uint8(g<<3 | g>>2), uint8(b<<3 | b>>2), 255}
+		lut[c] = uint32(r<<3|r>>2) | uint32(g<<3|g>>2)<<8 | uint32(b<<3|b>>2)<<16 | 0xFF<<24
 	}
 	return
 }()
@@ -696,7 +704,7 @@ func (l *LCD) drawTextBGLine(line uint16, bgcnt IORegister[uint16], hofs IORegis
 					continue
 				}
 				palAddr := (palBase + colorIdx) * 2
-				color := uint16(palette[palAddr]) | uint16(palette[palAddr+1])<<8
+				color := binary.LittleEndian.Uint16(palette[palAddr:])
 				l.drawBufPixel(screenX+i, color, layer)
 			}
 		} else {
@@ -720,7 +728,7 @@ func (l *LCD) drawTextBGLine(line uint16, bgcnt IORegister[uint16], hofs IORegis
 					continue
 				}
 				palAddr := colorIdx * 2
-				color := uint16(palette[palAddr]) | uint16(palette[palAddr+1])<<8
+				color := binary.LittleEndian.Uint16(palette[palAddr:])
 				l.drawBufPixel(screenX+i, color, layer)
 			}
 		}
@@ -868,7 +876,7 @@ func (l *LCD) BGMode4Write(line uint16) {
 			offset := uint32(line)*240 + i
 			colorIdx := vram[frame+offset]
 			palAddr := uint32(colorIdx) * 2
-			color := uint16(palette[palAddr]) | uint16(palette[palAddr+1])<<8
+			color := binary.LittleEndian.Uint16(palette[palAddr:])
 			l.drawBufPixel(i, color, layerBG2)
 		}
 	}
@@ -973,7 +981,7 @@ func (l *LCD) drawAffineBGLine(line uint16, bgcnt IORegister[uint16],
 		}
 
 		palAddr := colorIdx * 2
-		color := uint16(palette[palAddr]) | uint16(palette[palAddr+1])<<8
+		color := binary.LittleEndian.Uint16(palette[palAddr:])
 		l.drawBufPixel(screenX, color, layer)
 	}
 }
@@ -1126,7 +1134,7 @@ func (l *LCD) drawOBJLine(line uint16, targetPri uint16) {
 				} else {
 					palAddr = 0x200 + (palNum*16+colorIdx)*2
 				}
-				color := uint16(palette[palAddr]) | uint16(palette[palAddr+1])<<8
+				color := binary.LittleEndian.Uint16(palette[palAddr:])
 				l.drawBufPixel(uint32(screenX), color, layerOBJ)
 				l.objSemi[screenX] = semiTrans
 			}
@@ -1162,7 +1170,7 @@ func (l *LCD) drawOBJLine(line uint16, targetPri uint16) {
 				} else {
 					palAddr = 0x200 + (palNum*16+colorIdx)*2
 				}
-				color := uint16(palette[palAddr]) | uint16(palette[palAddr+1])<<8
+				color := binary.LittleEndian.Uint16(palette[palAddr:])
 				l.drawBufPixel(uint32(screenX), color, layerOBJ)
 				l.objSemi[screenX] = semiTrans
 			}
