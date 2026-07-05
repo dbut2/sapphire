@@ -79,7 +79,18 @@ func (m *Memory) addrBlockData(address uint32) *BlockData {
 	return &m.Blocks[0]
 }
 
+func vramOffset(address uint32) uint32 {
+	offset := address & 0x1FFFF
+	if offset >= 0x18000 {
+		offset -= 0x8000
+	}
+	return offset
+}
+
 func (m *Memory) block(bd *BlockData, address uint32) ([]byte, uint32) {
+	if address>>24 == 0x06 {
+		return bd.Data, vramOffset(address)
+	}
 	offset := address - bd.MemoryBlock.Start
 	if bd.MemoryBlock.Mask != 0 {
 		offset &= bd.MemoryBlock.Mask
@@ -261,8 +272,8 @@ func (m *Memory) Set8(address uint32, value uint8, cycle bool, forceAddr bool) {
 		m.Flash.Write(address, value)
 		return
 	}
-	if address >= 0x06000000 && address < 0x06018000 {
-		if address >= 0x06010000 {
+	if address>>24 == 0x06 {
+		if vramOffset(address) >= 0x10000 {
 			return // OBJ VRAM ignores 8-bit writes
 		}
 		halfword := uint16(value) | uint16(value)<<8

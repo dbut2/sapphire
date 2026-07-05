@@ -222,20 +222,29 @@ func (c *CPU) ThumbALU(instruction uint32) {
 		c.R[Rd] = uint32(value)
 		N, Z, _, _ = FlagLogic(left, right, value)
 	case 0b0010: // LSL
-		value, carry := ShiftLSL(left, right&0xFF)
+		amount := right & 0xFF
+		value, carry := ShiftLSL(left, amount)
 		c.R[Rd] = value
 		N, Z, _, _ = FlagLogic(left, right, uint64(value))
-		C = carry
+		if amount > 0 {
+			C = carry
+		}
 	case 0b0011: // LSR
-		value, carry := ShiftLSR(left, right&0xFF)
+		amount := right & 0xFF
+		value, carry := ShiftLSR(left, amount)
 		c.R[Rd] = value
 		N, Z, _, _ = FlagLogic(left, right, uint64(value))
-		C = carry
+		if amount > 0 {
+			C = carry
+		}
 	case 0b0100: // ASR
-		value, carry := ShiftASR(left, right&0xFF)
+		amount := right & 0xFF
+		value, carry := ShiftASR(left, amount)
 		c.R[Rd] = value
 		N, Z, _, _ = FlagLogic(left, right, uint64(value))
-		C = carry
+		if amount > 0 {
+			C = carry
+		}
 	case 0b0101: // ADC
 		value := ADC(left, right, Cy)
 		c.R[Rd] = uint32(value)
@@ -245,10 +254,13 @@ func (c *CPU) ThumbALU(instruction uint32) {
 		c.R[Rd] = uint32(value)
 		N, Z, C, V = FlagArithSub(left, right, value)
 	case 0b0111: // ROR
-		value, carry := ShiftROR(left, right&0xFF)
+		amount := right & 0xFF
+		value, carry := ShiftROR(left, amount)
 		c.R[Rd] = value
 		N, Z, _, _ = FlagLogic(left, right, uint64(value))
-		C = carry
+		if amount > 0 {
+			C = carry
+		}
 	case 0b1000: // TST
 		value := TST(left, right, Cy)
 		N, Z, _, _ = FlagLogic(left, right, value)
@@ -565,20 +577,47 @@ func (c *CPU) ThumbMemoryBlock(instruction uint32) {
 	Rb := ReadBits(instruction, 8, 3)
 	Rlist := ReadBits(instruction, 0, 8)
 
+	base := c.R[Rb]
+
+	if Rlist == 0 {
+		if Opcode == 0 {
+			c.Memory.Set32(base, c.R[15]+2, true, false)
+		} else {
+			c.R[15] = c.Memory.Read32(base, true, false)
+			c.prefetchFlush()
+		}
+		c.R[Rb] = base + 0x40
+		return
+	}
+
+	finalBase := base + setBitCount(Rlist)*4
+
 	switch Opcode {
 	case 0b0:
+		address := base
+		first := true
 		for i := 0; i <= 7; i++ {
 			if (Rlist>>i)&1 == 1 {
-				c.Memory.Set32(c.R[Rb], c.R[i], true, false)
-				c.R[Rb] += 4
+				value := c.R[i]
+				if uint32(i) == Rb && !first {
+					value = finalBase
+				}
+				c.Memory.Set32(address, value, true, false)
+				address += 4
+				first = false
 			}
 		}
+		c.R[Rb] = finalBase
 	case 0b1:
+		address := base
 		for i := 0; i <= 7; i++ {
 			if (Rlist>>i)&1 == 1 {
-				c.R[i] = c.Memory.Read32(c.R[Rb], true, false)
-				c.R[Rb] += 4
+				c.R[i] = c.Memory.Read32(address, true, false)
+				address += 4
 			}
+		}
+		if (Rlist>>Rb)&1 == 0 {
+			c.R[Rb] = finalBase
 		}
 	}
 }
@@ -599,9 +638,9 @@ func (c *CPU) ThumbMemoryHalfSign(instruction uint32) {
 	case 0b01: // LDSB
 		c.R[Rd] = uint32(signify(uint32(c.Memory.Read8(c.R[Rb]+c.R[Ro], true, false)), 8))
 	case 0b10: // LDRH
-		c.R[Rd] = uint32(c.Memory.Read16(c.R[Rb]+c.R[Ro], true, false))
+		c.R[Rd] = c.loadHalf(c.R[Rb] + c.R[Ro])
 	case 0b11: // LDSH
-		c.R[Rd] = uint32(signify(uint32(c.Memory.Read16(c.R[Rb]+c.R[Ro], true, false)), 16))
+		c.R[Rd] = c.loadHalfSigned(c.R[Rb] + c.R[Ro])
 	}
 }
 
@@ -615,6 +654,6 @@ func (c *CPU) ThumbMemoryHalf(instruction uint32) {
 	case 0b0: // STRH
 		c.Memory.Set16(c.R[Rb]+nn, uint16(c.R[Rd]), true, false)
 	case 0b1: // LDRH
-		c.R[Rd] = uint32(c.Memory.Read16(c.R[Rb]+nn, true, false))
+		c.R[Rd] = c.loadHalf(c.R[Rb] + nn)
 	}
 }
