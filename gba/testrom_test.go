@@ -95,3 +95,18 @@ func checkGolden(t *testing.T, name string, img *image.RGBA) {
 		t.Fatalf("framebuffer differs from golden %s (got: %s)", goldenPath, diffPath)
 	}
 }
+
+func TestSkipDrawStatePreserved(t *testing.T) {
+	gamepak, err := os.ReadFile("../sapphire.gba")
+	if err != nil {
+		t.Skip()
+	}
+	emu := NewEmu(gamepak)
+	emu.LCD.ShowFPS = false
+	emu.PreBoot()
+	for i := 0; i < 599; i++ {
+		emu.runFrame(true)
+	}
+	emu.runFrame(false)
+	checkGolden(t, "sapphire", emu.LCD.Front())
+}

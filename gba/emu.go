@@ -34,22 +34,36 @@ func (e *Emulator) Boot() {
 	e.Run()
 }
 
+const fastForwardSpeed = 10
+
 func (e *Emulator) Run() {
 	ticker := time.NewTicker(16739000 * time.Nanosecond)
 	for {
-		if !e.FastForward {
-			<-ticker.C
+		<-ticker.C
+		if e.FastForward {
+			for i := 0; i < fastForwardSpeed-1; i++ {
+				e.runFrame(true)
+			}
 		}
-		e.frame()
+		e.runFrame(false)
 	}
 }
 
 func (e *Emulator) frame() {
+	e.runFrame(false)
+}
+
+func (e *Emulator) runFrame(skipDraw bool) {
+	e.skipDraw = skipDraw
 	for line := uint16(0); line < 228; line++ {
 		e.scanline(line)
 	}
 
-	e.LCD.DrawFrame()
+	if skipDraw {
+		e.LCD.CountFrame()
+	} else {
+		e.LCD.DrawFrame()
+	}
 	e.Flash.Flush()
 }
 
@@ -92,7 +106,9 @@ func (e *Emulator) scanline(line uint16) {
 	blank := ReadBits(ReadIORegister16(e.Memory, DISPCNT), 7, 1)
 
 	if line < 160 {
-		e.LCD.DrawLine(line, blank)
+		if !e.skipDraw {
+			e.LCD.DrawLine(line, blank)
+		}
 		e.LCD.IncrementAffineRefs()
 	}
 

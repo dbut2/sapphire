@@ -62,7 +62,12 @@ func (l *LCD) SetDraw(draw func()) {
 	l.draw = draw
 }
 
+func (l *LCD) CountFrame() {
+	l.fpsFrames++
+}
+
 func (l *LCD) DrawFrame() {
+	l.CountFrame()
 	copy(l.front.Pix, l.img.Pix)
 	if l.ShowFPS {
 		l.drawFPS()
@@ -88,7 +93,6 @@ func (l *LCD) drawFPS() {
 	if l.fpsSince.IsZero() {
 		l.fpsSince = now
 	}
-	l.fpsFrames++
 	if d := now.Sub(l.fpsSince); d >= 500*time.Millisecond {
 		l.fpsValue = int(float64(l.fpsFrames)/d.Seconds() + 0.5)
 		l.fpsFrames = 0
