@@ -1,50 +1,48 @@
 package gba
 
 func (c *CPU) Thumb(instruction uint32) {
-	switch {
-	case instruction&0b1111_1111_0000_0000 == 0b1101_1111_0000_0000:
-		c.ThumbSWI(instruction)
-	case instruction&0b1111_1100_0000_0000 == 0b0100_0000_0000_0000:
-		c.ThumbALU(instruction)
-	case instruction&0b1111_1100_0000_0000 == 0b0100_0100_0000_0000:
-		c.ThumbHiReg(instruction)
-	case instruction&0b1111_1000_0000_0000 == 0b0001_1000_0000_0000:
-		c.ThumbAddSub(instruction)
-	case instruction&0b1111_1000_0000_0000 == 0b0100_1000_0000_0000:
-		c.ThumbMemoryPCRel(instruction)
-	case instruction&0b1111_0010_0000_0000 == 0b0101_0000_0000_0000:
-		c.ThumbMemoryReg(instruction)
-	case instruction&0b1110_0000_0000_0000 == 0b0110_0000_0000_0000:
-		c.ThumbMemoryImm(instruction)
-	case instruction&0b1111_0010_0000_0000 == 0b0101_0010_0000_0000:
-		c.ThumbMemoryHalfSign(instruction)
-	case instruction&0b1111_0000_0000_0000 == 0b1000_0000_0000_0000:
-		c.ThumbMemoryHalf(instruction)
-	case instruction&0b1111_0000_0000_0000 == 0b1001_0000_0000_0000:
-		c.ThumbMemorySPRel(instruction)
-	case instruction&0b1111_0000_0000_0000 == 0b1010_0000_0000_0000:
-		c.ThumbMemoryPCSP(instruction)
-	case instruction&0b1111_0000_0000_0000 == 0b1100_0000_0000_0000:
-		c.ThumbMemoryBlock(instruction)
-	case instruction&0b1110_0000_0000_0000 == 0b0000_0000_0000_0000:
-		c.ThumbShift(instruction)
-	case instruction&0b1110_0000_0000_0000 == 0b0010_0000_0000_0000:
-		c.ThumbImm(instruction)
-	case instruction&0b1111_0000_0000_0000 == 0b1101_0000_0000_0000:
-		c.ThumbBranchCond(instruction)
-	case instruction&0b1111_1000_0000_0000 == 0b1110_0000_0000_0000:
-		c.ThumbBranchUncond(instruction)
-	case instruction&0b1111_1000_0000_0000 == 0b1111_0000_0000_0000:
-		c.ThumbBranchLink1(instruction)
-	case instruction&0b1110_1000_0000_0000 == 0b1110_1000_0000_0000:
-		c.ThumbBranchLink2(instruction)
-	case instruction&0b1111_0110_0000_0000 == 0b1011_0100_0000_0000:
-		c.ThumbPushPop(instruction)
-	case instruction&0b1111_1111_0000_0000 == 0b1011_0000_0000_0000:
-		c.ThumbAddSP(instruction)
-	default:
-		c.noins(instruction)
+	thumbTable[instruction>>8](c, instruction)
+}
+
+var thumbTable = buildThumbTable()
+
+func buildThumbTable() (table [256]func(*CPU, uint32)) {
+	cases := []struct {
+		mask, value uint32
+		handler     func(*CPU, uint32)
+	}{
+		{0b1111_1111_0000_0000, 0b1101_1111_0000_0000, (*CPU).ThumbSWI},
+		{0b1111_1100_0000_0000, 0b0100_0000_0000_0000, (*CPU).ThumbALU},
+		{0b1111_1100_0000_0000, 0b0100_0100_0000_0000, (*CPU).ThumbHiReg},
+		{0b1111_1000_0000_0000, 0b0001_1000_0000_0000, (*CPU).ThumbAddSub},
+		{0b1111_1000_0000_0000, 0b0100_1000_0000_0000, (*CPU).ThumbMemoryPCRel},
+		{0b1111_0010_0000_0000, 0b0101_0000_0000_0000, (*CPU).ThumbMemoryReg},
+		{0b1110_0000_0000_0000, 0b0110_0000_0000_0000, (*CPU).ThumbMemoryImm},
+		{0b1111_0010_0000_0000, 0b0101_0010_0000_0000, (*CPU).ThumbMemoryHalfSign},
+		{0b1111_0000_0000_0000, 0b1000_0000_0000_0000, (*CPU).ThumbMemoryHalf},
+		{0b1111_0000_0000_0000, 0b1001_0000_0000_0000, (*CPU).ThumbMemorySPRel},
+		{0b1111_0000_0000_0000, 0b1010_0000_0000_0000, (*CPU).ThumbMemoryPCSP},
+		{0b1111_0000_0000_0000, 0b1100_0000_0000_0000, (*CPU).ThumbMemoryBlock},
+		{0b1110_0000_0000_0000, 0b0000_0000_0000_0000, (*CPU).ThumbShift},
+		{0b1110_0000_0000_0000, 0b0010_0000_0000_0000, (*CPU).ThumbImm},
+		{0b1111_0000_0000_0000, 0b1101_0000_0000_0000, (*CPU).ThumbBranchCond},
+		{0b1111_1000_0000_0000, 0b1110_0000_0000_0000, (*CPU).ThumbBranchUncond},
+		{0b1111_1000_0000_0000, 0b1111_0000_0000_0000, (*CPU).ThumbBranchLink1},
+		{0b1110_1000_0000_0000, 0b1110_1000_0000_0000, (*CPU).ThumbBranchLink2},
+		{0b1111_0110_0000_0000, 0b1011_0100_0000_0000, (*CPU).ThumbPushPop},
+		{0b1111_1111_0000_0000, 0b1011_0000_0000_0000, (*CPU).ThumbAddSP},
 	}
+	for i := range table {
+		pattern := uint32(i) << 8
+		table[i] = (*CPU).noins
+		for _, cs := range cases {
+			if pattern&cs.mask == cs.value {
+				table[i] = cs.handler
+				break
+			}
+		}
+	}
+	return
 }
 
 func (c *CPU) ThumbShift(instruction uint32) {

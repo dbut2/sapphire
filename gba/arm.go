@@ -5,10 +5,13 @@ import (
 )
 
 func (c *CPU) Arm(instruction uint32) {
-	if !c.cond(ReadBits(instruction, 28, 4)) {
+	if !c.cond(instruction >> 28) {
 		return
 	}
+	armTable[(instruction>>16)&0xFF0|(instruction>>4)&0xF](c, instruction)
+}
 
+func (c *CPU) armSlow(instruction uint32) {
 	switch {
 	case instruction&0b0000_1111_1111_1111_1111_1111_0000_0000 == 0b0000_0001_0010_1111_1111_1111_0000_0000:
 		c.ArmBranchX(instruction)
@@ -41,6 +44,48 @@ func (c *CPU) Arm(instruction uint32) {
 	default:
 		c.noins(instruction)
 	}
+}
+
+var armTable = buildArmTable()
+
+func buildArmTable() (table [4096]func(*CPU, uint32)) {
+	armNop := func(c *CPU, instruction uint32) {}
+	cases := []struct {
+		mask, value uint32
+		handler     func(*CPU, uint32)
+	}{
+		{0x0FFFFF00, 0x012FFF00, (*CPU).ArmBranchX},
+		{0x0FBF0FFF, 0x010F0000, (*CPU).ArmMRS},
+		{0x0DB0F000, 0x0120F000, (*CPU).ArmMSR},
+		{0x0FB00FF0, 0x01000090, (*CPU).ArmSwap},
+		{0x0F000000, 0x0F000000, (*CPU).ArmSWI},
+		{0x0E000000, 0x08000000, (*CPU).ArmMemoryBlock},
+		{0x0FC000F0, 0x00000090, (*CPU).ArmMultiply},
+		{0x0F8000F0, 0x00800090, (*CPU).ArmMultiplyLong},
+		{0x0E000090, 0x00000090, (*CPU).Arm_MemoryHalf},
+		{0x0E000000, 0x0A000000, (*CPU).ArmBranch},
+		{0x0C000000, 0x04000000, (*CPU).ArmMemory},
+		{0x0F000000, 0x0E000000, armNop},
+		{0x0E000000, 0x0C000000, armNop},
+		{0x0FE00000, 0x0C400000, armNop},
+		{0x0C000000, 0x00000000, (*CPU).ArmALU},
+	}
+	const indexBits = 0x0FF000F0
+	for i := range table {
+		pattern := uint32(i>>4)<<20 | uint32(i&0xF)<<4
+		table[i] = (*CPU).noins
+		for _, cs := range cases {
+			if pattern&cs.mask&indexBits == cs.value&indexBits {
+				if cs.mask&^indexBits == 0 {
+					table[i] = cs.handler
+				} else {
+					table[i] = (*CPU).armSlow
+				}
+				break
+			}
+		}
+	}
+	return
 }
 
 func (c *CPU) ArmALU(instruction uint32) {

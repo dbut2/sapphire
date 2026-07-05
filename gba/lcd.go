@@ -35,6 +35,10 @@ type LCD struct {
 	winMask   [240]uint8
 	useWindow bool
 
+	objList  [4][128]uint8
+	objCount [4]uint8
+	anySemi  bool
+
 	bg2Xi, bg2Yi int32
 	bg3Xi, bg3Yi int32
 }
@@ -218,6 +222,72 @@ func (l *LCD) initLine(line uint16) {
 		l.objSemi[x] = false
 	}
 	l.computeWindowMask(line)
+	l.prescanOBJ(line)
+}
+
+func (l *LCD) prescanOBJ(line uint16) {
+	l.objCount = [4]uint8{}
+	l.anySemi = false
+	dispcnt := ReadIORegister(l.Memory, DISPCNT)
+	if ReadBits(dispcnt, 12, 1) == 0 {
+		return
+	}
+	oam := l.Memory.ReadMemoryBlock(OAM)
+	for i := 0; i < 128; i++ {
+		base := i * 8
+		attr0 := uint16(oam[base]) | uint16(oam[base+1])<<8
+
+		objMode := (attr0 >> 10) & 3
+		if objMode == 2 || objMode == 3 {
+			continue
+		}
+
+		scalerot := attr0&0x100 != 0
+		doubleSize := attr0&0x200 != 0
+		if !scalerot && doubleSize {
+			continue
+		}
+
+		attr1 := uint16(oam[base+2]) | uint16(oam[base+3])<<8
+		shape := ReadBits(attr0, 14, 2)
+		size := ReadBits(attr1, 14, 2)
+		width := objWidth[shape][size]
+		height := objHeight[shape][size]
+		if width == 0 || height == 0 {
+			continue
+		}
+
+		canvasH := height
+		canvasW := width
+		if scalerot && doubleSize {
+			canvasW *= 2
+			canvasH *= 2
+		}
+
+		sprY := int(attr0 & 0xFF)
+		if sprY >= 160 {
+			sprY -= 256
+		}
+		if int(line) < sprY || int(line) >= sprY+int(canvasH) {
+			continue
+		}
+
+		sprX := int(attr1 & 0x1FF)
+		if sprX >= 240 {
+			sprX -= 512
+		}
+		if sprX >= 240 || sprX+int(canvasW) <= 0 {
+			continue
+		}
+
+		attr2 := uint16(oam[base+4]) | uint16(oam[base+5])<<8
+		pri := (attr2 >> 10) & 3
+		l.objList[pri][l.objCount[pri]] = uint8(i)
+		l.objCount[pri]++
+		if objMode == 1 {
+			l.anySemi = true
+		}
+	}
 }
 
 func (l *LCD) computeWindowMask(line uint16) {
@@ -422,6 +492,18 @@ func (l *LCD) compositeLine(line uint16) {
 	above := bldcnt & 0x3F
 	below := (bldcnt >> 8) & 0x3F
 
+	if mode == 0 && !l.anySemi {
+		pix := l.img.Pix[uint32(line)*240*4:]
+		for x := 0; x < 240; x++ {
+			lut := rgbaLUT[l.topColor[x]&0x7FFF]
+			pix[x*4+0] = lut[0]
+			pix[x*4+1] = lut[1]
+			pix[x*4+2] = lut[2]
+			pix[x*4+3] = lut[3]
+		}
+		return
+	}
+
 	bldalpha := ReadIORegister(l.Memory, BLDALPHA)
 	eva := uint32(bldalpha & 0x1F)
 	evb := uint32((bldalpha >> 8) & 0x1F)
@@ -593,6 +675,10 @@ func (l *LCD) drawTextBGLine(line uint16, bgcnt IORegister[uint16], hofs IORegis
 				continue
 			}
 			row := vram[rowAddr : rowAddr+4]
+			if row[0]|row[1]|row[2]|row[3] == 0 {
+				screenX += n
+				continue
+			}
 			palBase := palNum * 16
 			for i := uint32(0); i < n; i++ {
 				px := fineX + i
@@ -620,6 +706,10 @@ func (l *LCD) drawTextBGLine(line uint16, bgcnt IORegister[uint16], hofs IORegis
 				continue
 			}
 			row := vram[rowAddr : rowAddr+8]
+			if row[0]|row[1]|row[2]|row[3]|row[4]|row[5]|row[6]|row[7] == 0 {
+				screenX += n
+				continue
+			}
 			for i := uint32(0); i < n; i++ {
 				px := fineX + i
 				if hFlip {
@@ -942,6 +1032,11 @@ func objPixel(vram []byte, tileNum, srcX, srcY, width uint32, bpp8, linear bool)
 }
 
 func (l *LCD) drawOBJLine(line uint16, targetPri uint16) {
+	count := int(l.objCount[targetPri])
+	if count == 0 {
+		return
+	}
+
 	dispcnt := ReadIORegister(l.Memory, DISPCNT)
 	linear := ReadBits(dispcnt, 6, 1) == 1
 
@@ -949,29 +1044,15 @@ func (l *LCD) drawOBJLine(line uint16, targetPri uint16) {
 	vram := l.Memory.ReadMemoryBlock(VRAM)
 	palette := l.Memory.ReadMemoryBlock(Palette)
 
-	for i := 127; i >= 0; i-- {
-		base := i * 8
-		attr2 := uint16(oam[base+4]) | uint16(oam[base+5])<<8
-		pri := ReadBits(attr2, 10, 2)
-		if pri != targetPri {
-			continue
-		}
-
+	for k := count - 1; k >= 0; k-- {
+		base := int(l.objList[targetPri][k]) * 8
 		attr0 := uint16(oam[base]) | uint16(oam[base+1])<<8
 		attr1 := uint16(oam[base+2]) | uint16(oam[base+3])<<8
+		attr2 := uint16(oam[base+4]) | uint16(oam[base+5])<<8
 
 		scalerot := ReadBits(attr0, 8, 1) == 1
 		doubleSize := ReadBits(attr0, 9, 1) == 1
-
-		if !scalerot && doubleSize {
-			continue
-		}
-
-		objMode := (attr0 >> 10) & 3
-		if objMode == 2 || objMode == 3 {
-			continue
-		}
-		semiTrans := objMode == 1
+		semiTrans := (attr0>>10)&3 == 1
 
 		shape := ReadBits(attr0, 14, 2)
 		size := ReadBits(attr1, 14, 2)
@@ -979,9 +1060,6 @@ func (l *LCD) drawOBJLine(line uint16, targetPri uint16) {
 
 		width := objWidth[shape][size]
 		height := objHeight[shape][size]
-		if width == 0 || height == 0 {
-			continue
-		}
 
 		canvasW := width
 		canvasH := height
@@ -994,16 +1072,10 @@ func (l *LCD) drawOBJLine(line uint16, targetPri uint16) {
 		if sprY >= 160 {
 			sprY -= 256
 		}
-		if int(line) < sprY || int(line) >= sprY+int(canvasH) {
-			continue
-		}
 
 		sprX := int(attr1 & 0x1FF)
 		if sprX >= 240 {
 			sprX -= 512
-		}
-		if sprX >= 240 || sprX+int(canvasW) <= 0 {
-			continue
 		}
 
 		tileNum := uint32(attr2 & 0x3FF)
