@@ -688,6 +688,21 @@ func (l *LCD) drawTextBGLine(line uint16, bgcnt IORegister[uint16], hofs IORegis
 				continue
 			}
 			palBase := palNum * 16
+			if l.simple && !l.useWindow && !hFlip {
+				bits := uint32(row[0]) | uint32(row[1])<<8 | uint32(row[2])<<16 | uint32(row[3])<<24
+				bits >>= fineX * 4
+				for i := uint32(0); i < n; i++ {
+					colorIdx := bits & 0xF
+					bits >>= 4
+					if colorIdx == 0 {
+						continue
+					}
+					palAddr := (palBase + colorIdx) * 2
+					l.topColor[screenX+i] = binary.LittleEndian.Uint16(palette[palAddr:])
+				}
+				screenX += n
+				continue
+			}
 			for i := uint32(0); i < n; i++ {
 				px := fineX + i
 				if hFlip {
