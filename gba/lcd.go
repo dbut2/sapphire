@@ -2,6 +2,8 @@ package gba
 
 import (
 	"image"
+	"strconv"
+	"time"
 )
 
 const (
@@ -18,6 +20,11 @@ type LCD struct {
 	img   *image.RGBA
 	front *image.RGBA
 	draw  func()
+
+	ShowFPS   bool
+	fpsFrames int
+	fpsSince  time.Time
+	fpsValue  int
 
 	topColor [240]uint16
 	topLayer [240]uint8
@@ -51,7 +58,75 @@ func (l *LCD) SetDraw(draw func()) {
 
 func (l *LCD) DrawFrame() {
 	copy(l.front.Pix, l.img.Pix)
+	if l.ShowFPS {
+		l.drawFPS()
+	}
 	l.draw()
+}
+
+var fpsFont = map[byte][5]uint8{
+	'0': {0b111, 0b101, 0b101, 0b101, 0b111},
+	'1': {0b010, 0b110, 0b010, 0b010, 0b111},
+	'2': {0b111, 0b001, 0b111, 0b100, 0b111},
+	'3': {0b111, 0b001, 0b111, 0b001, 0b111},
+	'4': {0b101, 0b101, 0b111, 0b001, 0b001},
+	'5': {0b111, 0b100, 0b111, 0b001, 0b111},
+	'6': {0b111, 0b100, 0b111, 0b101, 0b111},
+	'7': {0b111, 0b001, 0b001, 0b001, 0b001},
+	'8': {0b111, 0b101, 0b111, 0b101, 0b111},
+	'9': {0b111, 0b101, 0b111, 0b001, 0b111},
+}
+
+func (l *LCD) drawFPS() {
+	now := time.Now()
+	if l.fpsSince.IsZero() {
+		l.fpsSince = now
+	}
+	l.fpsFrames++
+	if d := now.Sub(l.fpsSince); d >= 500*time.Millisecond {
+		l.fpsValue = int(float64(l.fpsFrames)/d.Seconds() + 0.5)
+		l.fpsFrames = 0
+		l.fpsSince = now
+	}
+
+	text := strconv.Itoa(l.fpsValue)
+	const scale, pad = 2, 2
+	w := (len(text)*4-1)*scale + pad*2
+	h := 5*scale + pad*2
+
+	for y := 0; y < h; y++ {
+		row := l.front.Pix[y*240*4:]
+		for x := 0; x < w; x++ {
+			row[x*4+0] = 0
+			row[x*4+1] = 0
+			row[x*4+2] = 0
+			row[x*4+3] = 255
+		}
+	}
+
+	for i := 0; i < len(text); i++ {
+		glyph := fpsFont[text[i]]
+		gx := pad + i*4*scale
+		for gy, bits := range glyph {
+			for c := 0; c < 3; c++ {
+				if bits&(1<<(2-c)) == 0 {
+					continue
+				}
+				for sy := 0; sy < scale; sy++ {
+					py := pad + gy*scale + sy
+					px := gx + c*scale
+					idx := (py*240 + px) * 4
+					for sx := 0; sx < scale; sx++ {
+						l.front.Pix[idx+0] = 0
+						l.front.Pix[idx+1] = 255
+						l.front.Pix[idx+2] = 64
+						l.front.Pix[idx+3] = 255
+						idx += 4
+					}
+				}
+			}
+		}
+	}
 }
 
 func (l *LCD) LatchAffineRefs() {

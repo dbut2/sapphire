@@ -11,6 +11,7 @@ func NewEmu(gamepak []byte) *Emulator {
 	img := image.NewRGBA(image.Rect(0, 0, 240, 160))
 	motherboard.LCD.setImage(img)
 	motherboard.LCD.SetDraw(func() {})
+	motherboard.LCD.ShowFPS = true
 
 	return &Emulator{Motherboard: motherboard}
 }
