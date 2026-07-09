@@ -73,7 +73,7 @@ func checkGolden(t *testing.T, name string, img *image.RGBA) {
 	if err != nil {
 		t.Fatalf("no golden (run with UPDATE_GOLDEN=1): %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	want, err := png.Decode(f)
 	if err != nil {
 		t.Fatal(err)
@@ -91,7 +91,7 @@ func checkGolden(t *testing.T, name string, img *image.RGBA) {
 		diffPath := filepath.Join(t.TempDir(), name+"_got.png")
 		f, _ := os.Create(diffPath)
 		_ = png.Encode(f, img)
-		f.Close()
+		_ = f.Close()
 		t.Fatalf("framebuffer differs from golden %s (got: %s)", goldenPath, diffPath)
 	}
 }

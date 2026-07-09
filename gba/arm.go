@@ -477,7 +477,7 @@ func (c *CPU) ArmMemory(instruction uint32) {
 		addr += Offset
 	}
 
-	if (P == 0 || ReadBits(instruction, 21, 1) == 1) && !(L == 1 && Rn == Rd) {
+	if (P == 0 || ReadBits(instruction, 21, 1) == 1) && (L != 1 || Rn != Rd) {
 		c.R[Rn] = addr
 	}
 
@@ -778,7 +778,7 @@ func (c *CPU) Arm_MemoryHalf(instruction uint32) {
 		addr += Offset
 	}
 
-	if (P == 0 || W == 1) && !(L == 1 && Rn == Rd) {
+	if (P == 0 || W == 1) && (L != 1 || Rn != Rd) {
 		c.R[Rn] = addr
 		setRegisters |= 1 << Rn
 	}

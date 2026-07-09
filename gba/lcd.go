@@ -198,25 +198,6 @@ func (l *LCD) Blank(line uint16) {
 	}
 }
 
-func (l *LCD) setPixel(x, y uint32, r, g, b uint32) {
-	if x >= 240 || y >= 160 {
-		return
-	}
-	idx := (y*240 + x) * 4
-	l.img.Pix[idx+0] = uint8(r<<3 | r>>2)
-	l.img.Pix[idx+1] = uint8(g<<3 | g>>2)
-	l.img.Pix[idx+2] = uint8(b<<3 | b>>2)
-	l.img.Pix[idx+3] = 255
-}
-
-func (l *LCD) setPixelFromColor(x, y uint32, color uint16) {
-	c := uint32(color)
-	r := ReadBits(c, 0, 5)
-	g := ReadBits(c, 5, 5)
-	b := ReadBits(c, 10, 5)
-	l.setPixel(x, y, r, g, b)
-}
-
 func (l *LCD) initLine(line uint16) {
 	l.computeWindowMask(line)
 	l.prescanOBJ(line)
