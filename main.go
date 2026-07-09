@@ -1,7 +1,6 @@
 package main
 
 import (
-	_ "embed"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/sqweek/dialog"
 
+	"dbut.dev/sapphire/assets"
 	"dbut.dev/sapphire/gba"
 )
 
@@ -29,7 +29,7 @@ func run(game string, gamepak []byte) {
 	savePath := deriveSavePath(game)
 
 	a := app.New()
-	emu := gba.NewEmu(gamepak)
+	emu := gba.NewEmu(gamepak, assets.BIOS)
 
 	if data, err := os.ReadFile(savePath); err == nil {
 		emu.Flash.LoadData(data)

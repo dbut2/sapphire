@@ -4,8 +4,8 @@ clean:
 
 .PHONY: decrypt
 decrypt:
-	openssl enc -d -aes-256-cbc -pbkdf2 -in enc/bios.gba.enc -out gba/bios.gba -pass pass:$$SAPPHIRE_KEY
-	openssl enc -d -aes-256-cbc -pbkdf2 -in enc/sapphire.gba.enc -out cmd/web/gamepak.gba -pass pass:$$SAPPHIRE_KEY
+	openssl enc -d -aes-256-cbc -pbkdf2 -in enc/bios.gba.enc -out assets/bios.gba -pass pass:$$SAPPHIRE_KEY
+	openssl enc -d -aes-256-cbc -pbkdf2 -in enc/sapphire.gba.enc -out assets/gamepak.gba -pass pass:$$SAPPHIRE_KEY
 
 .PHONY: build
 build: clean
@@ -31,8 +31,8 @@ package: build wasm
 .PHONY: encrypt
 encrypt:
 	$(eval KEY := $(or $(SAPPHIRE_KEY),$(shell openssl rand -base64 32)))
-	openssl enc -aes-256-cbc -pbkdf2 -salt -in gba/bios.gba -out enc/bios.gba.enc -pass pass:$(KEY)
-	openssl enc -aes-256-cbc -pbkdf2 -salt -in cmd/web/gamepak.gba -out enc/sapphire.gba.enc -pass pass:$(KEY)
+	openssl enc -aes-256-cbc -pbkdf2 -salt -in assets/bios.gba -out enc/bios.gba.enc -pass pass:$(KEY)
+	openssl enc -aes-256-cbc -pbkdf2 -salt -in assets/gamepak.gba -out enc/sapphire.gba.enc -pass pass:$(KEY)
 	echo $(KEY) | gh secret set SAPPHIRE_KEY --app actions
 	echo $(KEY) | gh secret set SAPPHIRE_KEY --app dependabot
 

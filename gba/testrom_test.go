@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"dbut.dev/sapphire/assets"
 )
 
 var testROMs = []struct {
@@ -30,7 +32,11 @@ func runROM(t *testing.T, path string, frames int) *image.RGBA {
 	if err != nil {
 		t.Skipf("rom not available: %v", err)
 	}
-	emu := NewEmu(gamepak)
+	return runFrames(gamepak, frames)
+}
+
+func runFrames(gamepak []byte, frames int) *image.RGBA {
+	emu := NewEmu(gamepak, assets.BIOS)
 	emu.LCD.ShowFPS = false
 	emu.PreBoot()
 	for i := 0; i < frames; i++ {
@@ -49,8 +55,7 @@ func TestROMGoldens(t *testing.T) {
 }
 
 func TestSapphireGolden(t *testing.T) {
-	img := runROM(t, "../sapphire.gba", 600)
-	checkGolden(t, "sapphire", img)
+	checkGolden(t, "sapphire", runFrames(assets.Gamepak, 600))
 }
 
 func checkGolden(t *testing.T, name string, img *image.RGBA) {
@@ -97,11 +102,7 @@ func checkGolden(t *testing.T, name string, img *image.RGBA) {
 }
 
 func TestSkipDrawStatePreserved(t *testing.T) {
-	gamepak, err := os.ReadFile("../sapphire.gba")
-	if err != nil {
-		t.Skip()
-	}
-	emu := NewEmu(gamepak)
+	emu := NewEmu(assets.Gamepak, assets.BIOS)
 	emu.LCD.ShowFPS = false
 	emu.PreBoot()
 	for i := 0; i < 599; i++ {
