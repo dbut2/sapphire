@@ -1,5 +1,7 @@
 package gba
 
+import "bytes"
+
 const (
 	flashReady = iota
 	flashCmd1
@@ -44,20 +46,18 @@ func NewFlash(m *Motherboard, gamepak []byte) *Flash {
 func (f *Flash) detectFlashType(rom []byte) {
 	has128 := false
 	has64 := false
-	for i := 0; i < len(rom)-12; i++ {
-		s := string(rom[i : i+12])
-		if len(s) >= 9 && s[:9] == "FLASH1M_V" {
-			has128 = true
-			break
+	idx128 := bytes.Index(rom, []byte("FLASH1M_V"))
+	idx64 := bytes.Index(rom, []byte("FLASH_V1"))
+	idx512 := bytes.Index(rom, []byte("FLASH512_V"))
+	best := -1
+	for _, idx := range []int{idx128, idx64, idx512} {
+		if idx >= 0 && (best < 0 || idx < best) {
+			best = idx
 		}
-		if len(s) >= 8 && s[:8] == "FLASH_V1" {
-			has64 = true
-			break
-		}
-		if len(s) >= 10 && s[:10] == "FLASH512_V" {
-			has64 = true
-			break
-		}
+	}
+	if best >= 0 {
+		has128 = best == idx128
+		has64 = !has128
 	}
 
 	if has128 {

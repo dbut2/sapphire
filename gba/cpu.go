@@ -1,6 +1,7 @@
 package gba
 
 import (
+	"encoding/binary"
 	"fmt"
 	"math"
 )
@@ -14,6 +15,13 @@ type CPU struct {
 
 	cycles uint32
 	halted bool
+
+	fetchData  []byte
+	fetchStart uint32
+	fetchMask  uint32
+	fetchTop   uint32
+	fetchCyc16 uint32
+	fetchCyc32 uint32
 }
 
 func NewCPU(m *Motherboard) *CPU {
@@ -38,12 +46,10 @@ func (c *CPU) Step() {
 
 	switch c.cpsrState() {
 	case 0:
-		curr &= ^uint32(3)
-		instruction := c.Memory.Read32(curr, true, false)
+		instruction := c.fetch32(curr &^ 3)
 		c.Arm(instruction)
 	case 1:
-		curr &= ^uint32(1)
-		instruction := c.Memory.Read16(curr, true, false)
+		instruction := c.fetch16(curr &^ 1)
 		c.Thumb(uint32(instruction))
 	}
 
@@ -54,6 +60,48 @@ func (c *CPU) Step() {
 		c.pcInc()
 	}
 	c.flushed = false
+}
+
+func (c *CPU) fetch32(addr uint32) uint32 {
+	if addr>>24 != c.fetchTop || c.fetchData == nil {
+		if !c.cacheFetchBlock(addr) {
+			return c.Memory.Read32(addr, true, false)
+		}
+	}
+	c.cycles += c.fetchCyc32
+	off := (addr - c.fetchStart) & c.fetchMask
+	return binary.LittleEndian.Uint32(c.fetchData[off:])
+}
+
+func (c *CPU) fetch16(addr uint32) uint16 {
+	if addr>>24 != c.fetchTop || c.fetchData == nil {
+		if !c.cacheFetchBlock(addr) {
+			return c.Memory.Read16(addr, true, false)
+		}
+	}
+	c.cycles += c.fetchCyc16
+	off := (addr - c.fetchStart) & c.fetchMask
+	return binary.LittleEndian.Uint16(c.fetchData[off:])
+}
+
+func (c *CPU) cacheFetchBlock(addr uint32) bool {
+	top := addr >> 24
+	if top >= 0x04 && top <= 0x07 {
+		c.fetchData = nil
+		return false
+	}
+	bd := c.Memory.findBlock(addr)
+	if bd == nil || bd.MemoryBlock.Mask == 0 {
+		c.fetchData = nil
+		return false
+	}
+	c.fetchData = bd.Data
+	c.fetchStart = bd.MemoryBlock.Start
+	c.fetchMask = bd.MemoryBlock.Mask
+	c.fetchTop = top
+	c.fetchCyc16 = bd.MemoryBlock.Cycles[1]
+	c.fetchCyc32 = bd.MemoryBlock.Cycles[2]
+	return true
 }
 
 func (c *CPU) noins(instruction uint32) {
@@ -358,11 +406,19 @@ func (c *CPU) exception(vector uint32) {
 }
 
 func (c *CPU) cond(cond uint32) bool {
-	N := c.cpsrN()
-	Z := c.cpsrZ()
-	C := c.cpsrC()
-	V := c.cpsrV()
+	return condTable[cond<<4|c.CPSR>>28]
+}
 
+var condTable = func() (t [256]bool) {
+	for cond := uint32(0); cond < 16; cond++ {
+		for flags := uint32(0); flags < 16; flags++ {
+			t[cond<<4|flags] = evalCond(cond, flags>>3&1, flags>>2&1, flags>>1&1, flags&1)
+		}
+	}
+	return
+}()
+
+func evalCond(cond, N, Z, C, V uint32) bool {
 	switch cond {
 	case 0b0000: // EQ Z=1 equal (zero) (same)
 		return Z == 1

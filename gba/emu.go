@@ -34,21 +34,40 @@ func (e *Emulator) Boot() {
 }
 
 func (e *Emulator) Run() {
-	ticker := time.NewTicker(16739000 * time.Nanosecond)
+	const frameDur = 16739 * time.Microsecond
+	ticker := time.NewTicker(frameDur)
+	lastDraw := time.Now()
 	for {
-		if !e.FastForward {
-			<-ticker.C
+		if e.FastForward {
+			if time.Since(lastDraw) >= frameDur {
+				lastDraw = time.Now()
+				e.runFrame(false)
+			} else {
+				e.runFrame(true)
+			}
+			continue
 		}
-		e.frame()
+		<-ticker.C
+		e.runFrame(false)
+		lastDraw = time.Now()
 	}
 }
 
 func (e *Emulator) frame() {
+	e.runFrame(false)
+}
+
+func (e *Emulator) runFrame(skipDraw bool) {
+	e.skipDraw = skipDraw
 	for line := uint16(0); line < 228; line++ {
 		e.scanline(line)
 	}
 
-	e.LCD.DrawFrame()
+	if skipDraw {
+		e.LCD.CountFrame()
+	} else {
+		e.LCD.DrawFrame()
+	}
 	e.Flash.Flush()
 }
 
@@ -91,7 +110,9 @@ func (e *Emulator) scanline(line uint16) {
 	blank := ReadBits(ReadIORegister16(e.Memory, DISPCNT), 7, 1)
 
 	if line < 160 {
-		e.LCD.DrawLine(line, blank)
+		if !e.skipDraw {
+			e.LCD.DrawLine(line, blank)
+		}
 		e.LCD.IncrementAffineRefs()
 	}
 
@@ -105,33 +126,48 @@ func (e *Emulator) scanline(line uint16) {
 }
 
 func (e *Emulator) step() {
-	dispstat := ReadIORegister16(e.Memory, DISPSTAT)
-	HBlank := (1005 - e.CPU.cycles) >> 31 // 0: 0-1005, 1: 1006-1231
-	dispstat = SetBits(dispstat, 1, 1, uint16(HBlank))
-	SetIORegister16(e.Memory, DISPSTAT, dispstat)
-
-	if e.CPU.cpsrIRQDisable() == 0 {
-		ime := ReadIORegister16(e.Memory, IME)
-		ie := ReadIORegister16(e.Memory, IE)
-		ifReg := ReadIORegister16(e.Memory, IF)
-		if ime > 0 && ie&ifReg > 0 {
-			e.CPU.halted = false
-			e.CPU.exception(0x18)
+	hblank := e.CPU.cycles > 1005
+	if hblank != e.hblank {
+		e.hblank = hblank
+		dispstat := ReadIORegister16(e.Memory, DISPSTAT)
+		var bit uint16
+		if hblank {
+			bit = 1
 		}
-	} else if e.CPU.halted {
-		ime := ReadIORegister16(e.Memory, IME)
-		ie := ReadIORegister16(e.Memory, IE)
-		ifReg := ReadIORegister16(e.Memory, IF)
-		if ime > 0 && ie&ifReg > 0 {
-			e.CPU.halted = false
+		SetIORegister16(e.Memory, DISPSTAT, SetBits(dispstat, 1, 1, bit))
+	}
+
+	if ifReg := ReadIORegister16(e.Memory, IF); ifReg != 0 {
+		if e.CPU.cpsrIRQDisable() == 0 {
+			ime := ReadIORegister16(e.Memory, IME)
+			ie := ReadIORegister16(e.Memory, IE)
+			if ime > 0 && ie&ifReg > 0 {
+				e.CPU.halted = false
+				e.CPU.exception(0x18)
+			}
+		} else if e.CPU.halted {
+			ime := ReadIORegister16(e.Memory, IME)
+			ie := ReadIORegister16(e.Memory, IE)
+			if ime > 0 && ie&ifReg > 0 {
+				e.CPU.halted = false
+			}
 		}
 	}
 
 	if e.CPU.halted {
-		const batch = 8
-		e.CPU.cycle(batch)
-		e.Timer.Tick(batch)
-		e.APU.Tick(batch)
+		jump := uint32(8)
+		if e.CPU.cycles < 1232 {
+			jump = 1232 - e.CPU.cycles
+		}
+		if until := e.Timer.untilDeadline(); until < jump {
+			jump = until
+		}
+		if jump == 0 {
+			jump = 1
+		}
+		e.CPU.cycle(jump)
+		e.Timer.Tick(jump)
+		e.APU.Tick(jump)
 		return
 	}
 

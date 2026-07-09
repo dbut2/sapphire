@@ -8,27 +8,75 @@ type Timer struct {
 	counters       [4]uint16
 	control        [4]uint16
 	enabled        [4]bool
+
+	acc      uint32
+	deadline uint32
 }
 
 func NewTimer(m *Motherboard) *Timer {
-	return &Timer{Motherboard: m}
+	return &Timer{Motherboard: m, deadline: idleDeadline}
 }
 
-var prescalerValues = [4]uint32{1, 64, 256, 1024}
+const idleDeadline = 1 << 30
+
+func (t *Timer) untilDeadline() uint32 {
+	if t.acc >= t.deadline {
+		return 1
+	}
+	return t.deadline - t.acc
+}
 
 func (t *Timer) Tick(cycles uint32) {
-	incs := [4]uint32{}
-
-	for i := range prescalerValues {
-		t.prescalerAccum[i] += cycles
-		incs[i] = t.prescalerAccum[i] / prescalerValues[i]
-		t.prescalerAccum[i] %= prescalerValues[i]
+	t.acc += cycles
+	if t.acc >= t.deadline {
+		t.flush()
 	}
+}
 
+func (t *Timer) flush() {
+	cycles := t.acc
+	t.acc = 0
+
+	t.prescalerAccum[0] += cycles
+	inc0 := t.prescalerAccum[0]
+	t.prescalerAccum[0] = 0
+
+	t.prescalerAccum[1] += cycles
+	inc1 := t.prescalerAccum[1] >> 6
+	t.prescalerAccum[1] &= 63
+
+	t.prescalerAccum[2] += cycles
+	inc2 := t.prescalerAccum[2] >> 8
+	t.prescalerAccum[2] &= 255
+
+	t.prescalerAccum[3] += cycles
+	inc3 := t.prescalerAccum[3] >> 10
+	t.prescalerAccum[3] &= 1023
+
+	incs := [4]uint32{inc0, inc1, inc2, inc3}
 	overflowed := t.tick(0, incs, false)
 	overflowed = t.tick(1, incs, overflowed)
 	overflowed = t.tick(2, incs, overflowed)
 	t.tick(3, incs, overflowed)
+
+	t.recomputeDeadline()
+}
+
+var prescalerShift = [4]uint32{0, 6, 8, 10}
+
+func (t *Timer) recomputeDeadline() {
+	deadline := uint32(idleDeadline)
+	for i := 0; i < 4; i++ {
+		if !t.enabled[i] || (t.control[i]>>2)&1 == 1 {
+			continue
+		}
+		prescaler := t.control[i] & 3
+		until := (0x10000-uint32(t.counters[i]))<<prescalerShift[prescaler] - t.prescalerAccum[prescaler]
+		if until < deadline {
+			deadline = until
+		}
+	}
+	t.deadline = deadline
 }
 
 func (t *Timer) tick(idx int, incs [4]uint32, prevOverflowed bool) bool {
@@ -67,23 +115,28 @@ func (t *Timer) tick(idx int, incs [4]uint32, prevOverflowed bool) bool {
 }
 
 func (t *Timer) SyncToMemory() {
-	for i, reg := range [4]IORegister[uint16]{TM0CNT_L, TM1CNT_L, TM2CNT_L, TM3CNT_L} {
-		SetIORegister16(t.Memory, reg, t.counters[i])
-	}
+	t.flush()
+	SetIORegister16(t.Memory, TM0CNT_L, t.counters[0])
+	SetIORegister16(t.Memory, TM1CNT_L, t.counters[1])
+	SetIORegister16(t.Memory, TM2CNT_L, t.counters[2])
+	SetIORegister16(t.Memory, TM3CNT_L, t.counters[3])
 }
 
 func (t *Timer) Set(address uint32, value uint16) {
-	t.reloads[timerAddrIndex[address]] = value
+	t.flush()
+	t.reloads[timerAddrIndex(address)] = value
 }
 
 func (t *Timer) Reload(address uint32) {
-	idx := timerAddrIndex[address]
+	idx := timerAddrIndex(address)
 	t.counters[idx] = t.reloads[idx]
 	SetIORegister16(t.Memory, indexTimer[idx], t.reloads[idx])
+	t.recomputeDeadline()
 }
 
 func (t *Timer) OnControlWrite(address uint32, value uint16) {
-	idx := timerAddrIndex[address]
+	t.flush()
+	idx := timerAddrIndex(address)
 	wasEnabled := t.enabled[idx]
 	t.control[idx] = value
 	t.enabled[idx] = (value>>7)&1 == 1
@@ -92,22 +145,11 @@ func (t *Timer) OnControlWrite(address uint32, value uint16) {
 		t.counters[idx] = t.reloads[idx]
 		SetIORegister16(t.Memory, indexTimer[idx], t.reloads[idx])
 	}
+	t.recomputeDeadline()
 }
 
-var indexTimer = map[int]IORegister[uint16]{
-	0: TM0CNT_L,
-	1: TM1CNT_L,
-	2: TM2CNT_L,
-	3: TM3CNT_L,
-}
+var indexTimer = [4]IORegister[uint16]{TM0CNT_L, TM1CNT_L, TM2CNT_L, TM3CNT_L}
 
-var timerAddrIndex = map[uint32]int{
-	uint32(TM0CNT_L): 0,
-	uint32(TM1CNT_L): 1,
-	uint32(TM2CNT_L): 2,
-	uint32(TM3CNT_L): 3,
-	uint32(TM0CNT_H): 0,
-	uint32(TM1CNT_H): 1,
-	uint32(TM2CNT_H): 2,
-	uint32(TM3CNT_H): 3,
+func timerAddrIndex(address uint32) int {
+	return int((address >> 2) & 3)
 }

@@ -1,7 +1,10 @@
 package gba
 
 import (
+	"encoding/binary"
 	"image"
+	"strconv"
+	"time"
 )
 
 const (
@@ -19,6 +22,11 @@ type LCD struct {
 	front *image.RGBA
 	draw  func()
 
+	ShowFPS   bool
+	fpsFrames int
+	fpsSince  time.Time
+	fpsValue  int
+
 	topColor [240]uint16
 	topLayer [240]uint8
 	botColor [240]uint16
@@ -27,6 +35,11 @@ type LCD struct {
 
 	winMask   [240]uint8
 	useWindow bool
+
+	objList  [4][128]uint8
+	objCount [4]uint8
+	anySemi  bool
+	simple   bool
 
 	bg2Xi, bg2Yi int32
 	bg3Xi, bg3Yi int32
@@ -49,9 +62,81 @@ func (l *LCD) SetDraw(draw func()) {
 	l.draw = draw
 }
 
+func (l *LCD) CountFrame() {
+	l.fpsFrames++
+}
+
 func (l *LCD) DrawFrame() {
+	l.CountFrame()
 	copy(l.front.Pix, l.img.Pix)
+	if l.ShowFPS {
+		l.drawFPS()
+	}
 	l.draw()
+}
+
+var fpsFont = map[byte][5]uint8{
+	'0': {0b111, 0b101, 0b101, 0b101, 0b111},
+	'1': {0b010, 0b110, 0b010, 0b010, 0b111},
+	'2': {0b111, 0b001, 0b111, 0b100, 0b111},
+	'3': {0b111, 0b001, 0b111, 0b001, 0b111},
+	'4': {0b101, 0b101, 0b111, 0b001, 0b001},
+	'5': {0b111, 0b100, 0b111, 0b001, 0b111},
+	'6': {0b111, 0b100, 0b111, 0b101, 0b111},
+	'7': {0b111, 0b001, 0b001, 0b001, 0b001},
+	'8': {0b111, 0b101, 0b111, 0b101, 0b111},
+	'9': {0b111, 0b101, 0b111, 0b001, 0b111},
+}
+
+func (l *LCD) drawFPS() {
+	now := time.Now()
+	if l.fpsSince.IsZero() {
+		l.fpsSince = now
+	}
+	if d := now.Sub(l.fpsSince); d >= 500*time.Millisecond {
+		l.fpsValue = int(float64(l.fpsFrames)/d.Seconds() + 0.5)
+		l.fpsFrames = 0
+		l.fpsSince = now
+	}
+
+	text := strconv.Itoa(l.fpsValue)
+	const scale, pad = 2, 2
+	w := (len(text)*4-1)*scale + pad*2
+	h := 5*scale + pad*2
+
+	for y := 0; y < h; y++ {
+		row := l.front.Pix[y*240*4:]
+		for x := 0; x < w; x++ {
+			row[x*4+0] = 0
+			row[x*4+1] = 0
+			row[x*4+2] = 0
+			row[x*4+3] = 255
+		}
+	}
+
+	for i := 0; i < len(text); i++ {
+		glyph := fpsFont[text[i]]
+		gx := pad + i*4*scale
+		for gy, bits := range glyph {
+			for c := 0; c < 3; c++ {
+				if bits&(1<<(2-c)) == 0 {
+					continue
+				}
+				for sy := 0; sy < scale; sy++ {
+					py := pad + gy*scale + sy
+					px := gx + c*scale
+					idx := (py*240 + px) * 4
+					for sx := 0; sx < scale; sx++ {
+						l.front.Pix[idx+0] = 0
+						l.front.Pix[idx+1] = 255
+						l.front.Pix[idx+2] = 64
+						l.front.Pix[idx+3] = 255
+						idx += 4
+					}
+				}
+			}
+		}
+	}
 }
 
 func (l *LCD) LatchAffineRefs() {
@@ -113,28 +198,21 @@ func (l *LCD) Blank(line uint16) {
 	}
 }
 
-func (l *LCD) setPixel(x, y uint32, r, g, b uint32) {
-	if x >= 240 || y >= 160 {
-		return
-	}
-	idx := (y*240 + x) * 4
-	l.img.Pix[idx+0] = uint8(r<<3 | r>>2)
-	l.img.Pix[idx+1] = uint8(g<<3 | g>>2)
-	l.img.Pix[idx+2] = uint8(b<<3 | b>>2)
-	l.img.Pix[idx+3] = 255
-}
-
-func (l *LCD) setPixelFromColor(x, y uint32, color uint16) {
-	c := uint32(color)
-	r := ReadBits(c, 0, 5)
-	g := ReadBits(c, 5, 5)
-	b := ReadBits(c, 10, 5)
-	l.setPixel(x, y, r, g, b)
-}
-
 func (l *LCD) initLine(line uint16) {
+	l.computeWindowMask(line)
+	l.prescanOBJ(line)
+
+	bldcnt := ReadIORegister(l.Memory, BLDCNT)
+	l.simple = (bldcnt>>6)&3 == 0 && !l.anySemi
+
 	palette := l.Memory.ReadMemoryBlock(Palette)
 	backdrop := uint16(palette[0]) | uint16(palette[1])<<8
+	if l.simple {
+		for x := 0; x < 240; x++ {
+			l.topColor[x] = backdrop
+		}
+		return
+	}
 	for x := 0; x < 240; x++ {
 		l.topColor[x] = backdrop
 		l.topLayer[x] = layerBackdrop
@@ -142,7 +220,71 @@ func (l *LCD) initLine(line uint16) {
 		l.botLayer[x] = layerBackdrop
 		l.objSemi[x] = false
 	}
-	l.computeWindowMask(line)
+}
+
+func (l *LCD) prescanOBJ(line uint16) {
+	l.objCount = [4]uint8{}
+	l.anySemi = false
+	dispcnt := ReadIORegister(l.Memory, DISPCNT)
+	if ReadBits(dispcnt, 12, 1) == 0 {
+		return
+	}
+	oam := l.Memory.ReadMemoryBlock(OAM)
+	for i := 0; i < 128; i++ {
+		base := i * 8
+		attr0 := uint16(oam[base]) | uint16(oam[base+1])<<8
+
+		objMode := (attr0 >> 10) & 3
+		if objMode == 2 || objMode == 3 {
+			continue
+		}
+
+		scalerot := attr0&0x100 != 0
+		doubleSize := attr0&0x200 != 0
+		if !scalerot && doubleSize {
+			continue
+		}
+
+		attr1 := uint16(oam[base+2]) | uint16(oam[base+3])<<8
+		shape := ReadBits(attr0, 14, 2)
+		size := ReadBits(attr1, 14, 2)
+		width := objWidth[shape][size]
+		height := objHeight[shape][size]
+		if width == 0 || height == 0 {
+			continue
+		}
+
+		canvasH := height
+		canvasW := width
+		if scalerot && doubleSize {
+			canvasW *= 2
+			canvasH *= 2
+		}
+
+		sprY := int(attr0 & 0xFF)
+		if sprY >= 160 {
+			sprY -= 256
+		}
+		if int(line) < sprY || int(line) >= sprY+int(canvasH) {
+			continue
+		}
+
+		sprX := int(attr1 & 0x1FF)
+		if sprX >= 240 {
+			sprX -= 512
+		}
+		if sprX >= 240 || sprX+int(canvasW) <= 0 {
+			continue
+		}
+
+		attr2 := uint16(oam[base+4]) | uint16(oam[base+5])<<8
+		pri := (attr2 >> 10) & 3
+		l.objList[pri][l.objCount[pri]] = uint8(i)
+		l.objCount[pri]++
+		if objMode == 1 {
+			l.anySemi = true
+		}
+	}
 }
 
 func (l *LCD) computeWindowMask(line uint16) {
@@ -335,6 +477,10 @@ func (l *LCD) drawBufPixel(x uint32, color uint16, layer uint8) {
 	if l.useWindow && l.winMask[x]&(1<<layer) == 0 {
 		return
 	}
+	if l.simple {
+		l.topColor[x] = color
+		return
+	}
 	l.botColor[x] = l.topColor[x]
 	l.botLayer[x] = l.topLayer[x]
 	l.topColor[x] = color
@@ -346,6 +492,14 @@ func (l *LCD) compositeLine(line uint16) {
 	mode := (bldcnt >> 6) & 3
 	above := bldcnt & 0x3F
 	below := (bldcnt >> 8) & 0x3F
+
+	if l.simple {
+		pix := l.img.Pix[uint32(line)*240*4:]
+		for x := 0; x < 240; x++ {
+			binary.LittleEndian.PutUint32(pix[x*4:], rgbaLUT[l.topColor[x]&0x7FFF])
+		}
+		return
+	}
 
 	bldalpha := ReadIORegister(l.Memory, BLDALPHA)
 	eva := uint32(bldalpha & 0x1F)
@@ -393,9 +547,20 @@ func (l *LCD) compositeLine(line uint16) {
 			}
 		}
 
-		l.setPixelFromColor(x, uint32(line), finalColor)
+		idx := (uint32(line)*240 + x) * 4
+		binary.LittleEndian.PutUint32(l.img.Pix[idx:], rgbaLUT[finalColor&0x7FFF])
 	}
 }
+
+var rgbaLUT = func() (lut [32768]uint32) {
+	for c := uint32(0); c < 32768; c++ {
+		r := c & 31
+		g := (c >> 5) & 31
+		b := (c >> 10) & 31
+		lut[c] = uint32(r<<3|r>>2) | uint32(g<<3|g>>2)<<8 | uint32(b<<3|b>>2)<<16 | 0xFF<<24
+	}
+	return
+}()
 
 func blendAlpha(above, below uint16, eva, evb uint32) uint16 {
 	ar := uint32(above) & 0x1F
@@ -441,103 +606,133 @@ func (l *LCD) drawTextBGLine(line uint16, bgcnt IORegister[uint16], hofs IORegis
 	scrollX := uint32(ReadIORegister(l.Memory, hofs)) & 0x1FF
 	scrollY := uint32(ReadIORegister(l.Memory, vofs)) & 0x1FF
 
-	var bgWidthTiles, bgHeightTiles uint32
-	switch screenSize {
-	case 0:
-		bgWidthTiles, bgHeightTiles = 32, 32
-	case 1:
-		bgWidthTiles, bgHeightTiles = 64, 32
-	case 2:
-		bgWidthTiles, bgHeightTiles = 32, 64
-	case 3:
-		bgWidthTiles, bgHeightTiles = 64, 64
-	}
+	bgWidthTiles := uint32(32) << (screenSize & 1)
+	bgHeightTiles := uint32(32) << (screenSize >> 1)
 
-	bgWidthPx := bgWidthTiles * 8
-	bgHeightPx := bgHeightTiles * 8
-
-	y := (uint32(line) + scrollY) % bgHeightPx
+	y := (uint32(line) + scrollY) % (bgHeightTiles * 8)
 	tileY := y / 8
 	fineY := y % 8
 
 	vram := l.Memory.ReadMemoryBlock(VRAM)
 	palette := l.Memory.ReadMemoryBlock(Palette)
 
-	for screenX := uint32(0); screenX < 240; screenX++ {
+	rowBlockOffset := uint32(0)
+	localTileY := tileY
+	if tileY >= 32 {
+		if bgWidthTiles == 64 {
+			rowBlockOffset = 0x1000
+		} else {
+			rowBlockOffset = 0x0800
+		}
+		localTileY -= 32
+	}
+
+	bgWidthPx := bgWidthTiles * 8
+	for screenX := uint32(0); screenX < 240; {
 		x := (screenX + scrollX) % bgWidthPx
 		tileX := x / 8
 		fineX := x % 8
+		n := 8 - fineX
+		if screenX+n > 240 {
+			n = 240 - screenX
+		}
 
-		screenBlockOffset := uint32(0)
+		screenBlockOffset := rowBlockOffset
 		localTileX := tileX
-		localTileY := tileY
-
-		if bgWidthTiles == 64 && tileX >= 32 {
+		if tileX >= 32 {
 			screenBlockOffset += 0x0800
 			localTileX -= 32
-		}
-		if bgHeightTiles == 64 && tileY >= 32 {
-			if bgWidthTiles == 64 {
-				screenBlockOffset += 0x1000
-			} else {
-				screenBlockOffset += 0x0800
-			}
-			localTileY -= 32
 		}
 
 		mapOffset := screenBase + screenBlockOffset + (localTileY*32+localTileX)*2
 		if mapOffset+1 >= uint32(len(vram)) {
+			screenX += n
 			continue
 		}
 		tileEntry := uint16(vram[mapOffset]) | uint16(vram[mapOffset+1])<<8
 
 		tileNum := uint32(tileEntry & 0x3FF)
-		hFlip := (tileEntry >> 10) & 1
-		vFlip := (tileEntry >> 11) & 1
+		hFlip := (tileEntry>>10)&1 == 1
+		vFlip := (tileEntry>>11)&1 == 1
 		palNum := uint32((tileEntry >> 12) & 0xF)
 
 		pixelY := fineY
-		pixelX := fineX
-
-		if hFlip == 1 {
-			pixelX = 7 - pixelX
-		}
-		if vFlip == 1 {
+		if vFlip {
 			pixelY = 7 - pixelY
 		}
 
-		var colorIdx uint32
 		if colorMode == 0 {
-
-			tileAddr := charBase + tileNum*32 + pixelY*4 + pixelX/2
-			if tileAddr >= uint32(len(vram)) {
+			rowAddr := charBase + tileNum*32 + pixelY*4
+			if rowAddr+4 > uint32(len(vram)) {
+				screenX += n
 				continue
 			}
-			b := uint32(vram[tileAddr])
-			if pixelX%2 == 0 {
-				colorIdx = b & 0xF
-			} else {
-				colorIdx = (b >> 4) & 0xF
-			}
-			if colorIdx == 0 {
+			row := vram[rowAddr : rowAddr+4]
+			if row[0]|row[1]|row[2]|row[3] == 0 {
+				screenX += n
 				continue
 			}
-			colorIdx = palNum*16 + colorIdx
+			palBase := palNum * 16
+			if l.simple && !l.useWindow && !hFlip {
+				bits := uint32(row[0]) | uint32(row[1])<<8 | uint32(row[2])<<16 | uint32(row[3])<<24
+				bits >>= fineX * 4
+				for i := uint32(0); i < n; i++ {
+					colorIdx := bits & 0xF
+					bits >>= 4
+					if colorIdx == 0 {
+						continue
+					}
+					palAddr := (palBase + colorIdx) * 2
+					l.topColor[screenX+i] = binary.LittleEndian.Uint16(palette[palAddr:])
+				}
+				screenX += n
+				continue
+			}
+			for i := uint32(0); i < n; i++ {
+				px := fineX + i
+				if hFlip {
+					px = 7 - px
+				}
+				b := uint32(row[px/2])
+				var colorIdx uint32
+				if px&1 == 0 {
+					colorIdx = b & 0xF
+				} else {
+					colorIdx = b >> 4
+				}
+				if colorIdx == 0 {
+					continue
+				}
+				palAddr := (palBase + colorIdx) * 2
+				color := binary.LittleEndian.Uint16(palette[palAddr:])
+				l.drawBufPixel(screenX+i, color, layer)
+			}
 		} else {
-
-			tileAddr := charBase + tileNum*64 + pixelY*8 + pixelX
-			if tileAddr >= uint32(len(vram)) {
+			rowAddr := charBase + tileNum*64 + pixelY*8
+			if rowAddr+8 > uint32(len(vram)) {
+				screenX += n
 				continue
 			}
-			colorIdx = uint32(vram[tileAddr])
-			if colorIdx == 0 {
+			row := vram[rowAddr : rowAddr+8]
+			if row[0]|row[1]|row[2]|row[3]|row[4]|row[5]|row[6]|row[7] == 0 {
+				screenX += n
 				continue
+			}
+			for i := uint32(0); i < n; i++ {
+				px := fineX + i
+				if hFlip {
+					px = 7 - px
+				}
+				colorIdx := uint32(row[px])
+				if colorIdx == 0 {
+					continue
+				}
+				palAddr := colorIdx * 2
+				color := binary.LittleEndian.Uint16(palette[palAddr:])
+				l.drawBufPixel(screenX+i, color, layer)
 			}
 		}
-
-		palAddr := colorIdx * 2
-		color := uint16(palette[palAddr]) | uint16(palette[palAddr+1])<<8
-		l.drawBufPixel(screenX, color, layer)
+		screenX += n
 	}
 }
 
@@ -550,17 +745,12 @@ func (l *LCD) BGMode0Write(line uint16) {
 	bgVofs := [4]IORegister[uint16]{BG0VOFS, BG1VOFS, BG2VOFS, BG3VOFS}
 	bgLayers := [4]uint8{layerBG0, layerBG1, layerBG2, layerBG3}
 
-	type bgInfo struct {
-		bgNum    int
-		priority uint16
-	}
-
-	var bgs []bgInfo
+	var bgEnabled [4]bool
+	var bgPri [4]uint16
 	for i := 0; i < 4; i++ {
 		if ReadBits(dispcnt, uint8(8+i), 1) == 1 {
-			cnt := ReadIORegister(l.Memory, bgCnts[i])
-			pri := ReadBits(cnt, 0, 2)
-			bgs = append(bgs, bgInfo{i, pri})
+			bgEnabled[i] = true
+			bgPri[i] = ReadBits(ReadIORegister(l.Memory, bgCnts[i]), 0, 2)
 		}
 	}
 
@@ -568,10 +758,8 @@ func (l *LCD) BGMode0Write(line uint16) {
 
 	for pri := uint16(3); pri <= 3; pri-- {
 		for bgIdx := 3; bgIdx >= 0; bgIdx-- {
-			for _, bg := range bgs {
-				if bg.bgNum == bgIdx && bg.priority == pri {
-					l.drawTextBGLine(line, bgCnts[bg.bgNum], bgHofs[bg.bgNum], bgVofs[bg.bgNum], bgLayers[bg.bgNum])
-				}
+			if bgEnabled[bgIdx] && bgPri[bgIdx] == pri {
+				l.drawTextBGLine(line, bgCnts[bgIdx], bgHofs[bgIdx], bgVofs[bgIdx], bgLayers[bgIdx])
 			}
 		}
 		if objEnabled {
@@ -591,16 +779,12 @@ func (l *LCD) BGMode1Write(line uint16) {
 	bgVofs := [2]IORegister[uint16]{BG0VOFS, BG1VOFS}
 	bgLayers := [2]uint8{layerBG0, layerBG1}
 
-	type bgInfo struct {
-		idx      int
-		priority uint16
-	}
-	var textBGs []bgInfo
+	var bgEnabled [2]bool
+	var bgPri [2]uint16
 	for i := 0; i < 2; i++ {
 		if ReadBits(dispcnt, uint8(8+i), 1) == 1 {
-			cnt := ReadIORegister(l.Memory, bgCnts[i])
-			pri := ReadBits(cnt, 0, 2)
-			textBGs = append(textBGs, bgInfo{i, pri})
+			bgEnabled[i] = true
+			bgPri[i] = ReadBits(ReadIORegister(l.Memory, bgCnts[i]), 0, 2)
 		}
 	}
 
@@ -616,10 +800,8 @@ func (l *LCD) BGMode1Write(line uint16) {
 			l.drawAffineBGLine(line, BG2CNT, BG2PA, BG2PB, BG2PC, BG2PD, BG2X, BG2Y, layerBG2)
 		}
 		for bgIdx := 1; bgIdx >= 0; bgIdx-- {
-			for _, bg := range textBGs {
-				if bg.idx == bgIdx && bg.priority == pri {
-					l.drawTextBGLine(line, bgCnts[bg.idx], bgHofs[bg.idx], bgVofs[bg.idx], bgLayers[bg.idx])
-				}
+			if bgEnabled[bgIdx] && bgPri[bgIdx] == pri {
+				l.drawTextBGLine(line, bgCnts[bgIdx], bgHofs[bgIdx], bgVofs[bgIdx], bgLayers[bgIdx])
 			}
 		}
 		if objEnabled {
@@ -694,7 +876,7 @@ func (l *LCD) BGMode4Write(line uint16) {
 			offset := uint32(line)*240 + i
 			colorIdx := vram[frame+offset]
 			palAddr := uint32(colorIdx) * 2
-			color := uint16(palette[palAddr]) | uint16(palette[palAddr+1])<<8
+			color := binary.LittleEndian.Uint16(palette[palAddr:])
 			l.drawBufPixel(i, color, layerBG2)
 		}
 	}
@@ -799,7 +981,7 @@ func (l *LCD) drawAffineBGLine(line uint16, bgcnt IORegister[uint16],
 		}
 
 		palAddr := colorIdx * 2
-		color := uint16(palette[palAddr]) | uint16(palette[palAddr+1])<<8
+		color := binary.LittleEndian.Uint16(palette[palAddr:])
 		l.drawBufPixel(screenX, color, layer)
 	}
 }
@@ -858,6 +1040,11 @@ func objPixel(vram []byte, tileNum, srcX, srcY, width uint32, bpp8, linear bool)
 }
 
 func (l *LCD) drawOBJLine(line uint16, targetPri uint16) {
+	count := int(l.objCount[targetPri])
+	if count == 0 {
+		return
+	}
+
 	dispcnt := ReadIORegister(l.Memory, DISPCNT)
 	linear := ReadBits(dispcnt, 6, 1) == 1
 
@@ -865,29 +1052,15 @@ func (l *LCD) drawOBJLine(line uint16, targetPri uint16) {
 	vram := l.Memory.ReadMemoryBlock(VRAM)
 	palette := l.Memory.ReadMemoryBlock(Palette)
 
-	for i := 127; i >= 0; i-- {
-		base := i * 8
+	for k := count - 1; k >= 0; k-- {
+		base := int(l.objList[targetPri][k]) * 8
 		attr0 := uint16(oam[base]) | uint16(oam[base+1])<<8
 		attr1 := uint16(oam[base+2]) | uint16(oam[base+3])<<8
 		attr2 := uint16(oam[base+4]) | uint16(oam[base+5])<<8
 
 		scalerot := ReadBits(attr0, 8, 1) == 1
 		doubleSize := ReadBits(attr0, 9, 1) == 1
-
-		if !scalerot && doubleSize {
-			continue
-		}
-
-		pri := ReadBits(attr2, 10, 2)
-		if pri != targetPri {
-			continue
-		}
-
-		objMode := (attr0 >> 10) & 3
-		if objMode == 2 || objMode == 3 {
-			continue
-		}
-		semiTrans := objMode == 1
+		semiTrans := (attr0>>10)&3 == 1
 
 		shape := ReadBits(attr0, 14, 2)
 		size := ReadBits(attr1, 14, 2)
@@ -895,9 +1068,6 @@ func (l *LCD) drawOBJLine(line uint16, targetPri uint16) {
 
 		width := objWidth[shape][size]
 		height := objHeight[shape][size]
-		if width == 0 || height == 0 {
-			continue
-		}
 
 		canvasW := width
 		canvasH := height
@@ -910,16 +1080,10 @@ func (l *LCD) drawOBJLine(line uint16, targetPri uint16) {
 		if sprY >= 160 {
 			sprY -= 256
 		}
-		if int(line) < sprY || int(line) >= sprY+int(canvasH) {
-			continue
-		}
 
 		sprX := int(attr1 & 0x1FF)
 		if sprX >= 240 {
 			sprX -= 512
-		}
-		if sprX >= 240 || sprX+int(canvasW) <= 0 {
-			continue
 		}
 
 		tileNum := uint32(attr2 & 0x3FF)
@@ -970,7 +1134,7 @@ func (l *LCD) drawOBJLine(line uint16, targetPri uint16) {
 				} else {
 					palAddr = 0x200 + (palNum*16+colorIdx)*2
 				}
-				color := uint16(palette[palAddr]) | uint16(palette[palAddr+1])<<8
+				color := binary.LittleEndian.Uint16(palette[palAddr:])
 				l.drawBufPixel(uint32(screenX), color, layerOBJ)
 				l.objSemi[screenX] = semiTrans
 			}
@@ -1006,7 +1170,7 @@ func (l *LCD) drawOBJLine(line uint16, targetPri uint16) {
 				} else {
 					palAddr = 0x200 + (palNum*16+colorIdx)*2
 				}
-				color := uint16(palette[palAddr]) | uint16(palette[palAddr+1])<<8
+				color := binary.LittleEndian.Uint16(palette[palAddr:])
 				l.drawBufPixel(uint32(screenX), color, layerOBJ)
 				l.objSemi[screenX] = semiTrans
 			}

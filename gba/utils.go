@@ -98,7 +98,11 @@ func ShiftASR(value, amount uint32) (uint32, bool) {
 }
 
 func ShiftROR(value, amount uint32) (uint32, bool) {
-	return value>>(amount%32) | value<<(32-(amount%32)), (value>>(amount-1))&1 > 0
+	m := amount % 32
+	if m == 0 {
+		return value, value>>31&1 > 0
+	}
+	return value>>m | value<<(32-m), (value>>(m-1))&1 > 0
 }
 
 func addInt(a uint32, b int32) uint32 {
