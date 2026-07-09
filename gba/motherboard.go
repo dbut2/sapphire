@@ -11,7 +11,7 @@ type Motherboard struct {
 	APU    *APU
 }
 
-func NewMotherboard(gamepak []byte) *Motherboard {
+func NewMotherboard(gamepak, bios []byte) *Motherboard {
 	m := &Motherboard{}
 
 	m.CPU = NewCPU(m)
@@ -24,7 +24,7 @@ func NewMotherboard(gamepak []byte) *Motherboard {
 	m.GPIO.RTC = NewRTC(m)
 	m.APU = NewAPU(m)
 
-	m.Memory.SetMemoryBlock(BIOS, bios[:])
+	m.Memory.SetMemoryBlock(BIOS, bios)
 	m.Memory.SetMemoryBlock(GPRom1, gamepak)
 
 	SetIORegister(m.Memory, KEYINPUT, uint16(0x03FF))

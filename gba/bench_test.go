@@ -1,16 +1,13 @@
 package gba
 
 import (
-	"os"
 	"testing"
+
+	"dbut.dev/sapphire/assets"
 )
 
 func BenchmarkFrames(b *testing.B) {
-	gamepak, err := os.ReadFile("../sapphire.gba")
-	if err != nil {
-		b.Skipf("rom not available: %v", err)
-	}
-	emu := NewEmu(gamepak)
+	emu := NewEmu(assets.Gamepak, assets.BIOS)
 	emu.LCD.ShowFPS = false
 	emu.PreBoot()
 	for i := 0; i < 60; i++ {

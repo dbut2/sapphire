@@ -43,7 +43,7 @@ Games known to boot:
 
 ## Requirements
 
-To run Sapphire, you will need a Game Boy Advance BIOS file (`bios.gba`). This file should be placed in the `gba/` directory before building, or you can use the `make decrypt` command if you have the encrypted version and the necessary key.
+To run Sapphire, you will need a Game Boy Advance BIOS file. Place it at `assets/bios.gba`. The browser build additionally needs a game at `assets/gamepak.gba`. If you have the encrypted versions and the key, `make decrypt` writes both for you.
 
 ## Installation
 

@@ -3,11 +3,11 @@
 package main
 
 import (
-	_ "embed"
 	"encoding/base64"
 	"os"
 	"syscall/js"
 
+	"dbut.dev/sapphire/assets"
 	"dbut.dev/sapphire/gba"
 )
 
@@ -48,7 +48,7 @@ func main() {
 	canvasEl.Set("width", width)
 	canvasEl.Set("height", height)
 
-	e := gba.NewEmu(game)
+	e := gba.NewEmu(assets.Gamepak, assets.BIOS)
 
 	localStorage := js.Global().Get("localStorage")
 	if encoded := localStorage.Call("getItem", saveKey); !encoded.IsNull() {
@@ -101,9 +101,3 @@ func main() {
 
 	select {}
 }
-
-// WASM requires a gamepak to be built
-// Please source a game and place at ./gamepak.gba
-//
-//go:embed gamepak.gba
-var game []byte

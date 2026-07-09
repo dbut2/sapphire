@@ -5,8 +5,8 @@ import (
 	"time"
 )
 
-func NewEmu(gamepak []byte) *Emulator {
-	motherboard := NewMotherboard(gamepak)
+func NewEmu(gamepak, bios []byte) *Emulator {
+	motherboard := NewMotherboard(gamepak, bios)
 
 	img := image.NewRGBA(image.Rect(0, 0, 240, 160))
 	motherboard.LCD.setImage(img)
