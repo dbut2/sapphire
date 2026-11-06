@@ -17,8 +17,8 @@ jobs:
         id: generate-token
         uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ secrets.GH_APP_ID }}
-          private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
+          client-id: ${{ secrets.GH_CLIENT_ID }}
+          private-key: ${{ secrets.GH_PRIVATE_KEY }}
           repositories: dbut2.github.io
           owner: dbut2
 
