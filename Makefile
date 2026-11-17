@@ -34,7 +34,6 @@ encrypt:
 	openssl enc -aes-256-cbc -pbkdf2 -salt -in assets/bios.gba -out enc/bios.gba.enc -pass pass:$(KEY)
 	openssl enc -aes-256-cbc -pbkdf2 -salt -in assets/gamepak.gba -out enc/sapphire.gba.enc -pass pass:$(KEY)
 	echo $(KEY) | gh secret set SAPPHIRE_KEY --app actions
-	echo $(KEY) | gh secret set SAPPHIRE_KEY --app dependabot
 
 .PHONY: test
 test:
