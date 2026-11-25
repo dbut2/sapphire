@@ -3,7 +3,7 @@ module dbut.dev/sapphire
 go 1.25.0
 
 require (
-	fyne.io/fyne/v2 v2.8.2
+	fyne.io/fyne/v2 v2.8.3
 	github.com/spf13/cobra v1.10.2
 	github.com/sqweek/dialog v0.0.0-20260123140253-64c163d53aac
 )
